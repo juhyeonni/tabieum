@@ -3,18 +3,29 @@ import NotesCore
 import os
 
 extension CurrentNote {
-    /// The database key of the one note selected in Notes, or nil for none or several. Main thread only: `NSAppleScript`.
+    /// The note open in Notes: the one selected, else the one titled like the front window (the list may be hidden).
+    /// Main thread only: `NSAppleScript`.
     @MainActor
-    static func selectedKey() -> Int? {
-        guard NotesControl.pid != nil else { return nil }
+    static func open(keysForTitle: (String) throws -> [Int]) throws -> Match {
+        var ids: [String] = []
         var error: NSDictionary?
-        let script = NSAppleScript(source: "tell application \"Notes\" to get id of selection")
-        guard let result = script?.executeAndReturnError(&error), error == nil else { return nil }
-        let ids = result.numberOfItems > 0
-            ? (1...result.numberOfItems).compactMap { result.atIndex($0)?.stringValue }
-            : [result.stringValue].compactMap { $0 }
-        guard ids.count == 1 else { return nil }
-        return key(coreDataID: ids[0])
+        if let result = NSAppleScript(source: #"tell application "Notes" to get id of selection"#)?.executeAndReturnError(&error) {
+            ids = result.numberOfItems > 0
+                ? (1...result.numberOfItems).compactMap { result.atIndex($0)?.stringValue }
+                : [result.stringValue].compactMap { $0 }
+        } else if error?[NSAppleScript.errorNumber] as? Int == -1743 {
+            throw CopyFailure.automationDenied
+        }
+        let title = NSAppleScript(source: #"tell application "Notes" to get name of front window"#)?
+            .executeAndReturnError(nil).stringValue
+        return try resolve(selection: ids, windowTitle: title, keysForTitle: keysForTitle)
+    }
+
+    /// Nil when Notes is not running or no single note can be told apart.
+    @MainActor
+    static func openKey() -> Int? {
+        guard NotesControl.pid != nil else { return nil }
+        return try? open { try NotesReader().noteKeys(title: $0) }.key
     }
 }
 
@@ -94,7 +105,7 @@ final class BacklinksPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate
     }
 
     private func refresh(force: Bool) {
-        let key = CurrentNote.selectedKey()
+        let key = CurrentNote.openKey()
         guard force || key != lastKey else { return }
         lastKey = key
         guard let key else { return show([], "Select one note in Notes.") }

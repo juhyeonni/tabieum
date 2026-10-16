@@ -23,8 +23,8 @@ enum CopyNoteAction {
 
     private static func run(_ copy: (Int, NotesReader) throws -> Void) {
         do {
-            let key = try CurrentNote.key(fromSelection: selectedNoteIDs())
-            try copy(key, NotesReader())
+            let reader = try NotesReader()
+            try copy(try CurrentNote.open { try reader.noteKeys(title: $0) }.key, reader)
         } catch let failure as CopyFailure {
             alert(message(failure))
         } catch let error as NotesReaderError {
@@ -34,19 +34,9 @@ enum CopyNoteAction {
         }
     }
 
-    private static func selectedNoteIDs() throws -> [String] {
-        let source = #"tell application "Notes" to get id of selection"#
-        var error: NSDictionary?
-        guard let result = NSAppleScript(source: source)?.executeAndReturnError(&error) else {
-            throw CurrentNote.failure(scriptErrorNumber: error?[NSAppleScript.errorNumber] as? Int ?? 0)
-        }
-        if result.numberOfItems == 0 { return result.stringValue.map { [$0] } ?? [] }
-        return (1...result.numberOfItems).compactMap { result.atIndex($0)?.stringValue }
-    }
-
     private static func message(_ failure: CopyFailure) -> String {
         switch failure {
-        case .noCurrentNote: "Select exactly one note in Notes first."
+        case .noCurrentNote: "Open or select one note in Notes first."
         case .locked: "This note is locked, so its text cannot be read."
         case .notFound: "Notes has no saved copy of this note yet."
         case .automationDenied: "Allow this app to control Notes in System Settings > Privacy & Security > Automation."
