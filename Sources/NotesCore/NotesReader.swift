@@ -13,6 +13,11 @@ public struct Folder: Equatable, Sendable {
     public let parentID: String?
 }
 
+public struct NoteStamp: Equatable, Sendable {
+    public let id: String
+    public let modified: Date
+}
+
 public struct Note: Equatable, Sendable {
     public let id: String
     public let title: String
@@ -134,6 +139,29 @@ public final class NotesReader {
     }
 
     public func notes() throws -> [Note] {
+        try readNotes(where: "")
+    }
+
+    public func notes(ids: [String]) throws -> [Note] {
+        guard !ids.isEmpty else { return [] }
+        let list = ids.map { "'" + $0.replacingOccurrences(of: "'", with: "''") + "'" }.joined(separator: ", ")
+        return try readNotes(where: "AND n.ZIDENTIFIER IN (\(list))")
+    }
+
+    public func noteStamps() throws -> [NoteStamp] {
+        let modified = try mostUsed(modificationColumns, entity: noteEntity)
+        return try query("""
+            SELECT n.ZIDENTIFIER, n.\(modified)
+            FROM \(Self.objects) n
+            JOIN \(Self.objects) f ON f.Z_PK = n.ZFOLDER AND f.Z_ENT = \(folderEntity)
+            WHERE n.Z_ENT = \(noteEntity) AND \(visibleFolder("f"))
+              AND coalesce(n.ZISPASSWORDPROTECTED, 0) = 0 AND coalesce(n.ZMARKEDFORDELETION, 0) = 0
+            """) {
+            NoteStamp(id: Self.text($0, 0) ?? "", modified: Date(timeIntervalSinceReferenceDate: sqlite3_column_double($0, 1)))
+        }
+    }
+
+    private func readNotes(where extra: String) throws -> [Note] {
         let title = try mostUsed(titleColumns, entity: noteEntity)
         let created = try mostUsed(creationColumns, entity: noteEntity)
         let modified = try mostUsed(modificationColumns, entity: noteEntity)
@@ -144,6 +172,7 @@ public final class NotesReader {
             LEFT JOIN ZICNOTEDATA d ON d.Z_PK = n.ZNOTEDATA
             WHERE n.Z_ENT = \(noteEntity) AND \(visibleFolder("f"))
               AND coalesce(n.ZISPASSWORDPROTECTED, 0) = 0 AND coalesce(n.ZMARKEDFORDELETION, 0) = 0
+              \(extra)
             ORDER BY n.Z_PK
             """) {
             Note(id: Self.text($0, 0) ?? "", title: Self.text($0, 1) ?? "", folderID: Self.text($0, 2) ?? "",

@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var markdownShortcuts: MarkdownShortcuts?
     private var vim: VimController?
     private var slashCommands: SlashCommands?
+    private var indexService: IndexService?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let name = ProductInfo.main?.name ?? ProcessInfo.processInfo.processName
@@ -32,6 +33,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         markdownShortcuts = MarkdownShortcuts(tracker: tracker, toggles: toggles)
         vim = VimController(tracker: tracker, toggles: toggles)
         slashCommands = SlashCommands(tracker: tracker, toggles: toggles)
+        if let bundleIdentifier = ProductInfo.main?.bundleIdentifier {
+            let service = IndexService(indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier))
+            service.start()
+            indexService = service
+        }
 
         Task {
             await status.refresh()
