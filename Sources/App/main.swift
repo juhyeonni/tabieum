@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem?
     private let status = PermissionStatus()
     private let toggles = FeatureToggles()
+    private lazy var ai = AIFeature(toggles: toggles, factory: AISettings.makeProvider)
     private var onboardingWindow: NSWindow?
     private var settingsWindow: NSWindow?
 
@@ -20,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(withTitle: "Quit \(name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
         statusItem = item
+        ai.config = AISettings.savedConfig()
 
         Task {
             await status.refresh()
@@ -29,7 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func showSettings() {
         let window = settingsWindow ?? makeWindow(title: "Settings", view: SettingsView(
-            status: status, toggles: toggles, showOnboarding: { [weak self] in self?.showOnboarding() }))
+            status: status, toggles: toggles, ai: ai, showOnboarding: { [weak self] in self?.showOnboarding() }))
         settingsWindow = window
         show(window)
     }

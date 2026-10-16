@@ -79,6 +79,7 @@ struct OnboardingView: View {
 struct SettingsView: View {
     @ObservedObject var status: PermissionStatus
     @ObservedObject var toggles: FeatureToggles
+    let ai: AIFeature
     let showOnboarding: () -> Void
 
     var body: some View {
@@ -95,8 +96,7 @@ struct SettingsView: View {
             featureTab($toggles.ragEnabled, title: "Enable RAG search",
                        detail: "Local semantic search over your notes. Runs on this Mac only.")
                 .tabItem { Label("RAG", systemImage: "magnifyingglass") }
-            featureTab($toggles.aiEnabled, title: "Enable AI",
-                       detail: "AI features that run on this Mac only.")
+            AITab(toggles: toggles, feature: ai)
                 .tabItem { Label("AI", systemImage: "sparkles") }
         }
         .frame(width: 520)
