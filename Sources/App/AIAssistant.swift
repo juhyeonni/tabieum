@@ -56,7 +56,7 @@ final class AIAssistant {
         }
     }
 
-    private func open() {
+    func open() {
         guard toggles.aiEnabled, !panel.isVisible, let buffer = tracker.buffer(),
               let rect = tracker.caretRect(), let primary = NSScreen.screens.first else { return }
         snapshot = buffer
