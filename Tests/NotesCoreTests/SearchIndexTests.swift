@@ -13,7 +13,21 @@ private final class FakeNotes: NoteSource, @unchecked Sendable {
     func noteStamps() throws -> [NoteStamp] { notes.values.map { NoteStamp(id: $0.id, modified: $0.modified) } }
     func notes(ids: [String]) throws -> [Note] { ids.compactMap { notes[$0] } }
     func folders() throws -> [Folder] { [Folder(id: "f1", name: "Work", accountID: "a", parentID: nil)] }
+
+    var attachmentTargets: [String: String] = [:]
+    func attachmentLinkTargets(ids: [String]) throws -> [String: String] { attachmentTargets.filter { ids.contains($0.key) } }
 }
+
+private func refs(_ data: Data) -> [NoteLinkRef] {
+    String(decoding: data, as: UTF8.self).split(separator: " ").compactMap { token in
+        if token.hasPrefix("att:") { return .attachment(String(token.dropFirst(4))) }
+        if token.hasPrefix("applenotes:") { return .url(String(token)) }
+        return nil
+    }
+}
+
+private func uuid(_ n: Int) -> String { String(format: "00000000-0000-0000-0000-%012d", n) }
+private func link(_ n: Int) -> String { "applenotes:note/\(uuid(n).lowercased())?ownerIdentifier=x" }
 
 private struct BadBody: Error {}
 
@@ -29,7 +43,7 @@ private func tempURL() -> URL {
 
 private func makeIndex(_ source: FakeNotes, url: URL = tempURL()) throws -> SearchIndex {
     let index = try SearchIndex(url: url)
-    try index.sync(from: source, decode: plain)
+    try index.sync(from: source, decode: plain, linkRefs: refs)
     return index
 }
 
@@ -71,6 +85,70 @@ private func makeIndex(_ source: FakeNotes, url: URL = tempURL()) throws -> Sear
         #expect(try index.search("").isEmpty)
         #expect(try index.search("   ").isEmpty)
         #expect(try index.search("near AND").map(\.id) == ["a"])
+    }
+
+    @Test func attachmentAndTextLinksBothMakeEdges() throws {
+        let source = FakeNotes()
+        source.set(uuid(2), title: "B", body: "")
+        source.set(uuid(1), title: "A", body: "see att:ATT1", modified: 1)
+        source.set(uuid(3), title: "C", body: "pasted \(link(2))", modified: 2)
+        source.attachmentTargets = ["ATT1": "applenotes:note/\(uuid(2))?ownerIdentifier=x"]
+        let index = try makeIndex(source)
+        #expect(try index.backlinks(to: uuid(2)).map(\.id) == [uuid(3), uuid(1)])
+    }
+
+    @Test func selfUnknownAndDuplicateLinksAddNoRows() throws {
+        let source = FakeNotes()
+        source.set(uuid(2), title: "B", body: "me \(link(2)) gone \(link(99)) web applenotes:other/x")
+        source.set(uuid(1), title: "A", body: "\(link(2)) \(link(2)) att:ATT1")
+        source.attachmentTargets = ["ATT1": link(2)]
+        let index = try makeIndex(source)
+        #expect(try index.backlinks(to: uuid(2)).map(\.id) == [uuid(1)])
+        #expect(try index.backlinks(to: uuid(1)).isEmpty)
+    }
+
+    @Test func reindexAndDeleteUpdateEdges() throws {
+        let source = FakeNotes()
+        source.set(uuid(2), title: "B", body: "")
+        source.set(uuid(1), title: "A", body: link(2))
+        source.set(uuid(3), title: "C", body: link(2))
+        let index = try makeIndex(source)
+        #expect(try index.backlinks(to: uuid(2)).count == 2)
+        source.set(uuid(1), title: "A", body: "no link", modified: 2)
+        source.notes[uuid(3)] = nil
+        try index.sync(from: source, decode: plain, linkRefs: refs)
+        #expect(try index.backlinks(to: uuid(2)).isEmpty)
+    }
+
+    @Test func backlinksCarryTitleFolderAndDateNewestFirst() throws {
+        let source = FakeNotes()
+        source.set(uuid(2), title: "B", body: "")
+        source.set(uuid(1), title: "Old", body: link(2), modified: 5)
+        source.set(uuid(3), title: "New", body: link(2), modified: 9)
+        let backlinks = try makeIndex(source).backlinks(to: uuid(2))
+        #expect(backlinks == [
+            Backlink(id: uuid(3), title: "New", folder: "Work", modified: Date(timeIntervalSinceReferenceDate: 9)),
+            Backlink(id: uuid(1), title: "Old", folder: "Work", modified: Date(timeIntervalSinceReferenceDate: 5)),
+        ])
+    }
+
+    @Test func coreDataIDParsing() {
+        #expect(CurrentNote.key(coreDataID: "x-coredata://ABC-123/ICNote/p123") == 123)
+        #expect(CurrentNote.key(coreDataID: "x-coredata://ABC-123/ICFolder/p123") == nil)
+        for bad in ["", "x-coredata://ABC/ICNote/", "x-coredata://ABC/ICNote/123", "x-coredata://ABC/ICNote/pxyz",
+                    "x-coredata:///ICNote/p1", "x-coredata://ABC/ICNote/p1/extra", "http://ABC/ICNote/p1"] {
+            #expect(CurrentNote.key(coreDataID: bad) == nil)
+        }
+    }
+
+    @Test func linkRefsFindTextLinksAndLinkAttachments() throws {
+        let runs = [
+            Encode.run(1, link: link(2)),
+            Encode.run(1, extra: Encode.bytes(12, Encode.string(1, "ATT1") + Encode.string(2, NoteLink.linkAttachmentUTI))),
+            Encode.run(1, attachment: .some("public.jpeg")),
+        ]
+        let document = try NoteBodyDecoder.decode(Encode.gzipBody("abc", runs))
+        #expect(document.linkRefs == [.url(link(2)), .attachment("ATT1")])
     }
 
     @Test func firstSyncIndexesEveryNote() throws {

@@ -10,6 +10,13 @@ public struct SearchResult: Equatable, Sendable {
     public let ownerIdentifier: String?
 }
 
+public struct Backlink: Equatable, Sendable {
+    public let id: String
+    public let title: String
+    public let folder: String
+    public let modified: Date
+}
+
 struct IndexedNote {
     let id: String
     let title: String
@@ -17,11 +24,12 @@ struct IndexedNote {
     let modified: Date
     let body: String
     let owner: String
+    var links: [String] = []
 }
 
 /// A full-text index of readable notes in one SQLite file. It is a cache: everything in it can be rebuilt from Notes.
 public final class SearchIndex: @unchecked Sendable {
-    static let schemaVersion = 2
+    static let schemaVersion = 3
 
     public static func defaultURL(bundleIdentifier: String) -> URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -50,6 +58,11 @@ public final class SearchIndex: @unchecked Sendable {
         try connection.run("PRAGMA journal_mode = WAL")
         try connection.run("CREATE TABLE IF NOT EXISTS notes(id TEXT NOT NULL UNIQUE, modified REAL NOT NULL)")
         try connection.run("""
+            CREATE TABLE IF NOT EXISTS links(
+                source TEXT NOT NULL, target TEXT NOT NULL, PRIMARY KEY(source, target)) WITHOUT ROWID
+            """)
+        try connection.run("CREATE INDEX IF NOT EXISTS links_target ON links(target)")
+        try connection.run("""
             CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
                 title, body, folder UNINDEXED, owner UNINDEXED, tokenize = 'unicode61 remove_diacritics 2', prefix = '2 3')
             """)
@@ -77,6 +90,20 @@ public final class SearchIndex: @unchecked Sendable {
         }
     }
 
+    /// The notes that link to `uuid`, each once, newest first.
+    public func backlinks(to uuid: String) throws -> [Backlink] {
+        try db.rows("""
+            SELECT n.id, f.title, f.folder, n.modified
+            FROM links l JOIN notes n ON n.id = l.source JOIN notes_fts f ON f.rowid = n.rowid
+            WHERE l.target = ?1 AND l.source <> ?1
+            ORDER BY n.modified DESC
+            """, [.text(uuid.uppercased())]) {
+            Backlink(id: SQLiteConnection.text($0, 0), title: SQLiteConnection.text($0, 1),
+                     folder: SQLiteConnection.text($0, 2),
+                     modified: Date(timeIntervalSinceReferenceDate: sqlite3_column_double($0, 3)))
+        }
+    }
+
     func modifiedDates() throws -> [String: Double] {
         let pairs = try db.rows("SELECT id, modified FROM notes") {
             (SQLiteConnection.text($0, 0), sqlite3_column_double($0, 1))
@@ -96,6 +123,10 @@ public final class SearchIndex: @unchecked Sendable {
                     INSERT INTO notes_fts(rowid, title, body, folder, owner)
                     VALUES ((SELECT rowid FROM notes WHERE id = ?1), ?2, ?3, ?4, ?5)
                     """, [.text(note.id), .text(note.title), .text(note.body), .text(note.folder), .text(note.owner)])
+                try db.run("DELETE FROM links WHERE source = ?1", [.text(note.id)])
+                for target in note.links {
+                    try db.run("INSERT INTO links(source, target) VALUES (?1, ?2)", [.text(note.id), .text(target)])
+                }
             }
         }
     }
@@ -104,6 +135,7 @@ public final class SearchIndex: @unchecked Sendable {
         try db.transaction {
             for id in ids {
                 try db.run("DELETE FROM notes_fts WHERE rowid = (SELECT rowid FROM notes WHERE id = ?1)", [.text(id)])
+                try db.run("DELETE FROM links WHERE source = ?1", [.text(id)])
                 try db.run("DELETE FROM notes WHERE id = ?1", [.text(id)])
             }
         }
