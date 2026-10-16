@@ -189,12 +189,19 @@ public final class NotesReader {
     public func noteKeys(title: String) throws -> [Int] {
         let column = try mostUsed(titleColumns, entity: noteEntity)
         let modified = try mostUsed(modificationColumns, entity: noteEntity)
-        let quoted = title.replacingOccurrences(of: "'", with: "''")
+        let wanted = Self.collapsingWhitespace(title)
         return try query("""
-            SELECT Z_PK FROM \(Self.objects)
-            WHERE Z_ENT = \(noteEntity) AND \(column) = '\(quoted)' AND coalesce(ZMARKEDFORDELETION, 0) = 0
+            SELECT Z_PK, \(column) FROM \(Self.objects)
+            WHERE Z_ENT = \(noteEntity) AND coalesce(ZMARKEDFORDELETION, 0) = 0
             ORDER BY \(modified) DESC, Z_PK DESC
-            """) { Int(sqlite3_column_int64($0, 0)) }
+            """) { (Int(sqlite3_column_int64($0, 0)), Self.text($0, 1)) }
+            .filter { $0.1.map(Self.collapsingWhitespace) == wanted }
+            .map(\.0)
+    }
+
+    /// Notes shows a window's title with runs of spaces collapsed to one, while the database keeps them.
+    private static func collapsingWhitespace(_ title: String) -> String {
+        title.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
     public func noteStamps() throws -> [NoteStamp] {
