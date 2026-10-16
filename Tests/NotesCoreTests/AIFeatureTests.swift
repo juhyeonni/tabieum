@@ -68,3 +68,11 @@ func baseURLValidation(url: String, allowed: Bool) {
     #expect(feature.provider == nil && created == nil)
     #expect(calls == 1)
 }
+
+@Test func extraHeadersParse() {
+    let text = "  X-A :  one  \n\n X-B: {session}-{session}\nno colon\n: v\nBad Name: v\nX-C:"
+    let result = ExtraHeader.parse(text, session: "S")
+    #expect(result.headers == [ExtraHeader(name: "X-A", value: "one"), ExtraHeader(name: "X-B", value: "S-S"),
+                               ExtraHeader(name: "X-C", value: "")])
+    #expect(result.errors.map(\.line) == [4, 5, 6])
+}

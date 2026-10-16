@@ -64,6 +64,9 @@ public struct OpenAICompatibleProvider: AIProvider {
         var request = URLRequest(url: URL(string: base + "/" + path)!)
         request.httpMethod = "POST"
         request.timeoutInterval = 120
+        for header in config.extraHeaders where !["content-type", "authorization"].contains(header.name.lowercased()) {
+            request.setValue(header.value, forHTTPHeaderField: header.name)
+        }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let key = config.apiKey { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
         request.httpBody = try JSONEncoder().encode(body)

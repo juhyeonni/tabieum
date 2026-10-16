@@ -5,12 +5,17 @@ import SwiftUI
 enum AISettings {
     static var service: String { Bundle.main.bundleIdentifier ?? ProcessInfo.processInfo.processName }
 
+    static let session = UUID().uuidString
+
+    static func headers(_ text: String) -> [ExtraHeader] { ExtraHeader.parse(text, session: session).headers }
+
     static func savedConfig(_ defaults: UserDefaults = .standard) -> AIConfig? {
         let baseURL = defaults.string(forKey: "aiBaseURL") ?? ""
         guard let host = AIConfig(baseURL: baseURL, chatModel: "-")?.host else { return nil }
         return AIConfig(baseURL: baseURL, chatModel: defaults.string(forKey: "aiChatModel") ?? "",
                       embeddingModel: defaults.string(forKey: "aiEmbeddingModel") ?? "",
-                      apiKey: APIKeychain.key(service: service, host: host))
+                      apiKey: APIKeychain.key(service: service, host: host),
+                      extraHeaders: headers(defaults.string(forKey: "aiExtraHeaders") ?? ""))
     }
 
     static func makeProvider(_ config: AIConfig) -> any AIProvider {
@@ -37,6 +42,7 @@ struct AITab: View {
     @AppStorage("aiBaseURL") private var baseURL = ""
     @AppStorage("aiChatModel") private var chatModel = ""
     @AppStorage("aiEmbeddingModel") private var embeddingModel = ""
+    @AppStorage("aiExtraHeaders") private var extraHeaders = ""
     @State private var apiKey = ""
     @State private var hosts: [String] = []
     @State private var result = ""
@@ -45,6 +51,10 @@ struct AITab: View {
     @State private var recording = false
     @State private var shortcutRejected = false
     private let consent = HostConsent()
+
+    private var headerErrors: [(line: Int, reason: String)] {
+        ExtraHeader.parse(extraHeaders, session: AISettings.session).errors
+    }
 
     private var host: String? { AIConfig(baseURL: baseURL, chatModel: "-")?.host }
 
@@ -65,6 +75,13 @@ struct AITab: View {
             TextField("Chat model", text: $chatModel, prompt: Text("llama3.2"))
             TextField("Embedding model", text: $embeddingModel, prompt: Text("Optional"))
             SecureField("API key", text: $apiKey, prompt: Text("Optional"))
+            TextField("Extra headers", text: $extraHeaders, prompt: Text("Name: value, one per line"), axis: .vertical)
+                .lineLimit(2...6)
+            Text("Use {session} for an ID that stays the same until the app quits. Put secrets in API key.")
+                .font(.caption).foregroundStyle(.secondary)
+            ForEach(headerErrors, id: \.line) { error in
+                Text("Line \(error.line): \(error.reason)").font(.caption).foregroundStyle(.red)
+            }
             HStack {
                 Button("Test connection", action: test).disabled(testing || feature.provider == nil)
                 Text(result).font(.callout).lineLimit(3)
@@ -92,6 +109,7 @@ struct AITab: View {
         }
         .onChange(of: chatModel) { apply() }
         .onChange(of: embeddingModel) { apply() }
+        .onChange(of: extraHeaders) { apply() }
         .onChange(of: apiKey) {
             if let host { APIKeychain.setKey(apiKey, service: AISettings.service, host: host) }
             apply()
@@ -128,7 +146,8 @@ struct AITab: View {
 
     private func apply() {
         feature.config = AIConfig(baseURL: baseURL, chatModel: chatModel,
-                                  embeddingModel: embeddingModel, apiKey: apiKey)
+                                  embeddingModel: embeddingModel, apiKey: apiKey,
+                                  extraHeaders: AISettings.headers(extraHeaders))
     }
 
     private func test() {
