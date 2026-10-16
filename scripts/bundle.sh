@@ -16,5 +16,6 @@ sed -e "s/__PRODUCT_NAME__/$PRODUCT_NAME/g" \
     -e "s/__URL_SCHEME__/$URL_SCHEME/g" \
     Config/Info.plist.in > "$app/Contents/Info.plist"
 plutil -lint "$app/Contents/Info.plist" > /dev/null
-codesign --force --sign - "$app"
+# A stable identity keeps Keychain "Always Allow" valid across rebuilds; the ad-hoc default changes with every build.
+codesign --force --sign "${NOTEKIT_SIGN_IDENTITY:--}" "$app"
 echo "$app"
