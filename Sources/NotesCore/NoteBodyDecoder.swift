@@ -65,6 +65,10 @@ public enum NoteBodyDecoder {
         guard let document = try root.message(2), let note = try document.message(3) else {
             throw NoteBodyDecoderError.malformed
         }
+        return try Self.document(from: note)
+    }
+
+    static func document(from note: Message) throws -> NoteDocument {
         let text = note.bytes(2).map { String(decoding: $0, as: UTF8.self) } ?? ""
         let runs = try note.allBytes(5).map { try run(from: Message($0)) }
         return NoteDocument(text: text, runs: runs)
@@ -112,7 +116,7 @@ public enum NoteBodyDecoder {
     }
 
     /// Checks the gzip header, skips its optional fields (RFC 1952) and inflates the raw DEFLATE payload.
-    private static func gunzip(_ data: Data) throws -> [UInt8] {
+    static func gunzip(_ data: Data) throws -> [UInt8] {
         let b = [UInt8](data)
         guard b.count >= 18, b[0] == 0x1f, b[1] == 0x8b, b[2] == 8 else { throw NoteBodyDecoderError.notGzip }
         let flags = b[3]

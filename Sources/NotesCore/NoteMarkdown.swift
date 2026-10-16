@@ -2,7 +2,13 @@ import Foundation
 
 extension NoteDocument {
     /// One Markdown line per Notes paragraph; consecutive monospaced paragraphs share one fenced block.
-    public func markdown() -> String {
+    /// `tableData` returns the mergeable data of a table attachment; a table it cannot supply or that does not decode stays a placeholder.
+    public func markdown(tableData: @escaping (NoteAttachment) -> Data? = { _ in nil }) -> String {
+        let table: (NoteAttachment) -> String? = { attachment in
+            guard attachment.typeUTI == NoteBodyDecoder.tableUTI, let data = tableData(attachment),
+                  let rows = try? NoteBodyDecoder.decodeTable(data) else { return nil }
+            return Self.gfm(rows)
+        }
         var output: [String] = []
         var code: [String] = []
         func closeCode() {
@@ -18,7 +24,7 @@ extension NoteDocument {
                 continue
             }
             closeCode()
-            output.append(Self.render(line))
+            output.append(Self.render(line, table: table))
         }
         closeCode()
         return output.joined(separator: "\n")
@@ -92,8 +98,8 @@ extension NoteDocument {
         return result
     }
 
-    private static func render(_ line: Line) -> String {
-        let content = inline(line.pieces)
+    private static func render(_ line: Line, table: (NoteAttachment) -> String?) -> String {
+        let content = inline(line.pieces, table: table)
         guard !content.isEmpty else { return "" }
         let style = line.paragraph
         let indent = String(repeating: " ", count: 4 * style.indent)
@@ -110,7 +116,7 @@ extension NoteDocument {
         return (style.blockQuote ? "> " : "") + prefix + content
     }
 
-    private static func inline(_ pieces: [Piece]) -> String {
+    private static func inline(_ pieces: [Piece], table: (NoteAttachment) -> String?) -> String {
         var merged: [Piece] = []
         for piece in pieces {
             if let last = merged.last, last.format == piece.format {
@@ -124,7 +130,7 @@ extension NoteDocument {
         var offset = 0
         var output = ""
         for piece in merged {
-            output += styled(piece, offset: offset, blockMarkers: blockMarkers)
+            output += styled(piece, offset: offset, blockMarkers: blockMarkers, table: table)
             offset += piece.text.unicodeScalars.count
         }
         return output
@@ -140,11 +146,11 @@ extension NoteDocument {
         return []
     }
 
-    private static func styled(_ piece: Piece, offset: Int, blockMarkers: Set<Int>) -> String {
+    private static func styled(_ piece: Piece, offset: Int, blockMarkers: Set<Int>, table: (NoteAttachment) -> String?) -> String {
         let format = piece.format
         if let attachment = format.attachment {
             let marker = attachment.typeUTI.map { "[attachment: \($0)]" } ?? "[attachment]"
-            return piece.text.unicodeScalars.filter { $0 == "\u{FFFC}" }.map { _ in marker }.joined()
+            return piece.text.unicodeScalars.filter { $0 == "\u{FFFC}" }.map { _ in table(attachment) ?? marker }.joined()
         }
         var escaped = ""
         for (index, scalar) in piece.text.unicodeScalars.enumerated() where scalar != "\u{FFFC}" {
@@ -175,5 +181,17 @@ extension NoteDocument {
             result = "[\(result)](\(url))"
         }
         return String(leading) + result + String(trailing)
+    }
+
+    /// The first row is the header. Cell text keeps the inline rendering; `|` is escaped and line breaks become `<br>`.
+    private static func gfm(_ rows: [[NoteDocument]]) -> String {
+        func cell(_ document: NoteDocument) -> String {
+            document.lines().map { inline($0.pieces, table: { _ in nil }) }
+                .joined(separator: "<br>")
+                .replacingOccurrences(of: "|", with: "\\|")
+        }
+        let lines = rows.map { "| " + $0.map(cell).joined(separator: " | ") + " |" }
+        let delimiter = "|" + String(repeating: " --- |", count: rows[0].count)
+        return ([lines[0], delimiter] + lines.dropFirst()).joined(separator: "\n")
     }
 }
