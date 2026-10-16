@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var markdownShortcuts: MarkdownShortcuts?
     private var vim: VimController?
     private var slashCommands: SlashCommands?
+    private var indexService: IndexService?
     private var aiAssistant: AIAssistant?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -36,6 +37,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         slashCommands = slash
         aiAssistant = AIAssistant(tracker: tracker, toggles: toggles, feature: ai, registry: slash.registry)
         vim?.claimsKey = { [weak self] in self?.slashCommands?.claims(keyCode: $0) ?? false }
+        if let bundleIdentifier = ProductInfo.main?.bundleIdentifier {
+            let service = IndexService(indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier))
+            service.start()
+            indexService = service
+        }
 
         Task {
             await status.refresh()
