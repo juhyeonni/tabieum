@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import NotesCore
 
@@ -123,15 +124,37 @@ private func chunks(_ title: String, _ markdown: String) -> [Chunk] {
         #expect(try index.chunkCount(noteID: "b") == 1)
     }
 
-    @Test func ragOffWritesNoChunksAndCreatesNoEmbedder() throws {
+    @Test func ragOffWritesNoChunks() throws {
         let source = FakeNotes()
         source.set("a", title: "one", body: "alpha")
         let index = try SearchIndex(url: tempURL())
-        nonisolated(unsafe) var created = 0
-        let off: (() -> Embedder)? = false ? { created += 1; return StubEmbedder() } : nil
-        try index.sync(from: source, decode: plain, embedder: off)
-        #expect(created == 0)
+        try index.sync(from: source, decode: plain, embedder: nil)
         #expect(try index.chunkCount() == 0)
+    }
+
+    @Test func serviceCreatesTheEmbedderOnlyWhileRAGIsOn() async throws {
+        let library = try Library()
+        try library.populate()
+        let indexURL = tempURL()
+        let ragOn = OSAllocatedUnfairLock(initialState: false)
+        let created = OSAllocatedUnfairLock(initialState: 0)
+        let service = IndexService(
+            indexURL: indexURL, notesDatabaseURL: library.url, ragEnabled: { ragOn.withLock { $0 } },
+            makeEmbedder: { created.withLock { $0 += 1 }; return StubEmbedder() })
+
+        func wait(until condition: () -> Bool) async throws {
+            for _ in 0..<200 where !condition() { try await Task.sleep(for: .milliseconds(50)) }
+            #expect(condition())
+        }
+
+        service.requestSync()
+        try await wait { ((try? SearchIndex(url: indexURL, readOnly: true).modifiedDates().count) ?? 0) > 0 }
+        #expect(created.withLock { $0 } == 0)
+
+        ragOn.withLock { $0 = true }
+        service.requestSync()
+        try await wait { created.withLock { $0 } > 0 }
+        #expect(created.withLock { $0 } == 1)
     }
 
     @Test func turningRagOffDeletesAllChunks() throws {
