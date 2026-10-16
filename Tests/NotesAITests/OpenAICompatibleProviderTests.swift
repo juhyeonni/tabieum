@@ -68,8 +68,10 @@ private func stubSession() -> URLSession {
 }
 
 private func provider(_ baseURL: String = "http://localhost:11434/v1", key: String? = nil,
+                      headers: [ExtraHeader] = [],
                       consent: HostConsent = HostConsent(defaults: freshDefaults())) -> OpenAICompatibleProvider {
-    let config = AIConfig(baseURL: baseURL, chatModel: "llama3", embeddingModel: "nomic-embed-text", apiKey: key)!
+    let config = AIConfig(baseURL: baseURL, chatModel: "llama3", embeddingModel: "nomic-embed-text", apiKey: key,
+                          extraHeaders: headers)!
     return OpenAICompatibleProvider(config: config, consent: consent, session: stubSession())
 }
 
@@ -172,6 +174,31 @@ private let user = [ChatMessage(role: .user, content: "hi")]
 
         StubProtocol.reset { $0.respond("{\"data\":[{\"index\":0,\"embedding\":[1]}]}") }
         await #expect(throws: AIError.badResponse) { try await provider().embed(["a", "b"]) }
+    }
+
+    @Test func extraHeadersAreSentOnChatAndEmbed() async throws {
+        let headers = ExtraHeader.parse("X-Team: a\nX-Session: {session}", session: "S1").headers
+        StubProtocol.reset { $0.respond("data: [DONE]\n\n") }
+        _ = try await collect(provider(headers: headers).chat(user))
+        let chat = try #require(StubProtocol.requests.first).0
+        StubProtocol.reset { $0.respond("{\"data\":[{\"index\":0,\"embedding\":[1]}]}") }
+        _ = try await provider(headers: headers).embed(["a"])
+        let embed = try #require(StubProtocol.requests.first).0
+        for request in [chat, embed] {
+            #expect(request.value(forHTTPHeaderField: "X-Team") == "a")
+            #expect(request.value(forHTTPHeaderField: "X-Session") == "S1")
+        }
+    }
+
+    @Test func extraHeadersCannotReplaceBuiltIns() async throws {
+        let headers = ExtraHeader.parse("authorization: evil\nContent-Type: text/plain", session: "S").headers
+        for key in [nil, "sk-test"] as [String?] {
+            StubProtocol.reset { $0.respond("data: [DONE]\n\n") }
+            _ = try await collect(provider(key: key, headers: headers).chat(user))
+            let (request, _) = try #require(StubProtocol.requests.first)
+            #expect(request.value(forHTTPHeaderField: "Authorization") == key.map { "Bearer \($0)" })
+            #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+        }
     }
 
     @Test func consentGatesNonLoopbackHosts() async throws {

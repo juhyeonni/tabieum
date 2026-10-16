@@ -26,14 +26,48 @@ public enum AIError: Error, Equatable {
     case consentRequired(host: String)
 }
 
+public struct ExtraHeader: Equatable, Sendable {
+    public let name: String
+    public let value: String
+
+    public static func parse(_ text: String, session: String) -> (headers: [ExtraHeader], errors: [(line: Int, reason: String)]) {
+        var headers: [ExtraHeader] = []
+        var errors: [(line: Int, reason: String)] = []
+        for (index, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { continue }
+            guard let colon = trimmed.firstIndex(of: ":") else {
+                errors.append((index + 1, "Missing a colon."))
+                continue
+            }
+            let name = trimmed[..<colon].trimmingCharacters(in: .whitespaces)
+            if name.isEmpty {
+                errors.append((index + 1, "Missing a header name."))
+            } else if !name.unicodeScalars.allSatisfy(tokenCharacters.contains) {
+                errors.append((index + 1, "Invalid header name."))
+            } else {
+                let value = trimmed[trimmed.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+                headers.append(ExtraHeader(name: name, value: value.replacingOccurrences(of: "{session}", with: session)))
+            }
+        }
+        return (headers, errors)
+    }
+
+    private static let tokenCharacters = CharacterSet(charactersIn: "!#$%&'*+-.^_`|~")
+        .union(CharacterSet(charactersIn: "a"..."z")).union(CharacterSet(charactersIn: "A"..."Z"))
+        .union(CharacterSet(charactersIn: "0"..."9"))
+}
+
 public struct AIConfig: Equatable, Sendable {
     public let baseURL: URL
     public let host: String
     public let chatModel: String
     public let embeddingModel: String?
     public let apiKey: String?
+    public let extraHeaders: [ExtraHeader]
 
-    public init?(baseURL: String, chatModel: String, embeddingModel: String? = nil, apiKey: String? = nil) {
+    public init?(baseURL: String, chatModel: String, embeddingModel: String? = nil, apiKey: String? = nil,
+                 extraHeaders: [ExtraHeader] = []) {
         let chatModel = chatModel.trimmingCharacters(in: .whitespaces)
         guard let url = URL(string: baseURL.trimmingCharacters(in: .whitespaces)),
               let host = Self.allowedHost(url), !chatModel.isEmpty
@@ -43,6 +77,7 @@ public struct AIConfig: Equatable, Sendable {
         self.chatModel = chatModel
         self.embeddingModel = embeddingModel.flatMap { $0.isEmpty ? nil : $0 }
         self.apiKey = apiKey.flatMap { $0.isEmpty ? nil : $0 }
+        self.extraHeaders = extraHeaders
     }
 
     public var isLoopback: Bool { Self.isLoopback(host) }
