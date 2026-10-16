@@ -48,6 +48,9 @@ final class VimController {
     private var subscription: Int?
     private var cancellables: Set<AnyCancellable> = []
 
+    /// Keys another feature's tap is taking right now, which Vim passes.
+    var claimsKey: (Int64) -> Bool = { _ in false }
+
     private var active = false
     private var mismatchLine: NSRange?
     private var swallowed: Set<Int64> = []
@@ -111,7 +114,7 @@ final class VimController {
         if event.tag == Self.eventTag { return true }
         let keyCode = event.keyCode
         if type == .keyUp { return swallowed.remove(keyCode) == nil }
-        guard active else { return true }
+        guard active, NSApp.keyWindow == nil, !claimsKey(keyCode) else { return true }
         let flags = event.flags
         guard let key = vimKey(
             keyCode: Int(keyCode), shift: flags.contains(.maskShift), control: flags.contains(.maskControl),
@@ -230,11 +233,11 @@ final class VimController {
         let buffer = tracker.buffer()
         if buffer?.caretLine != mismatchLine { mismatchLine = nil }
         active = buffer.map { !$0.caretLineHasAttachment && mismatchLine == nil } ?? false
-        indicator.show(engine.mode, below: state.caretRect)
+        indicator.show(engine.mode, in: state.editorFrame)
     }
 }
 
-/// A borderless, non-activating, click-through panel showing the mode just below the caret.
+/// A borderless, non-activating, click-through panel showing the mode in the editor's bottom-left corner.
 @MainActor
 final class ModeIndicator {
     private let label = NSTextField(labelWithString: "")
@@ -255,17 +258,17 @@ final class ModeIndicator {
         return panel
     }()
 
-    func show(_ mode: VimMode, below caret: CGRect?) {
-        guard let caret, let primary = NSScreen.screens.first else { return hide() }
+    func show(_ mode: VimMode, in frame: CGRect?) {
+        guard let frame, let primary = NSScreen.screens.first else { return hide() }
         label.stringValue = switch mode {
         case .normal: "-- NORMAL --"
         case .insert: "-- INSERT --"
         case .visual: "-- VISUAL --"
         }
         let size = label.fittingSize
-        let rect = appKitRect(fromAX: caret, primaryScreenHeight: primary.frame.height)
+        let rect = appKitRect(fromAX: frame, primaryScreenHeight: primary.frame.height)
         panel.setFrame(
-            CGRect(x: rect.minX, y: rect.minY - size.height - 4, width: size.width + 10, height: size.height + 2),
+            CGRect(x: rect.minX + 8, y: rect.minY + 8, width: size.width + 10, height: size.height + 2),
             display: true)
         panel.orderFrontRegardless()
     }

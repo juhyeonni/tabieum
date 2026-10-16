@@ -92,6 +92,43 @@ private func typeSlash(after before: String, then after: String = "") -> NSRange
     #expect(registry.items.map(\.title) == ["AI", "Always"])
 }
 
+@Test func queryIsTheTextBetweenSlashAndCaret() {
+    #expect(slashQuery(text: "a /head", slashOffset: 2, caret: 3) == "")
+    #expect(slashQuery(text: "a /head", slashOffset: 2, caret: 7) == "head")
+    #expect(slashQuery(text: "a /제목 rest", slashOffset: 2, caret: 5) == "제목")
+}
+
+@Test func queryIsNilWhenTheMenuShouldClose() {
+    #expect(slashQuery(text: "a head", slashOffset: 2, caret: 4) == nil)
+    #expect(slashQuery(text: "a /head", slashOffset: 2, caret: 2) == nil)
+    #expect(slashQuery(text: "a /head", slashOffset: 2, caret: 1) == nil)
+    #expect(slashQuery(text: "a /he ad", slashOffset: 2, caret: 8) == nil)
+    #expect(slashQuery(text: "a /", slashOffset: 5, caret: 3) == nil)
+}
+
+@Test func groupsAreTemplatesStylesCommandsWithoutEmptySections() {
+    let template = SlashItem(title: "Meeting", action: .template("1"))
+    let command = SlashItem(title: "AI", action: .command(0))
+    let groups = groupSlashItems([command, SlashItem.builtIns[0], template, SlashItem.builtIns[1]])
+    #expect(groups.map(\.section) == [.templates, .styles, .commands])
+    #expect(groups[1].items.map(\.title) == ["Title", "Heading"])
+    #expect(groupSlashItems(SlashItem.builtIns).map(\.section) == [.styles])
+}
+
+@Test func styleShortcutsComeFromKeyEquivalents() {
+    #expect(NotesStyle.heading.shortcut == "⇧⌘H")
+    #expect(NotesStyle.blockQuote.shortcut == "⌘'")
+    #expect(SlashItem(title: "Meeting", action: .template("1")).shortcut == nil)
+    #expect(SlashItem(title: "AI", action: .command(0)).shortcut == nil)
+    #expect(SlashItem.builtIns[1].shortcut == "⇧⌘H")
+}
+
+@Test func menuIsClosedOnlyForAQueryThatMatchesNothing() {
+    #expect(slashMenuStaysOpen(SlashItem.builtIns, query: ""))
+    #expect(slashMenuStaysOpen(SlashItem.builtIns, query: "head"))
+    #expect(!slashMenuStaysOpen(SlashItem.builtIns, query: "zzz"))
+}
+
 @Test func templateFolderDefaultsToTemplatesAndPersists() {
     let name = "test.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: name)!

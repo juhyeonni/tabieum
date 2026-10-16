@@ -202,3 +202,20 @@ struct TestError: Error {
              snippet: nil, body: Data([9])),
     ])
 }
+
+@Test func readsLinkAttachmentTargetsAndNoteKeys() throws {
+    let library = try Library()
+    try library.populate()
+    let target = "applenotes:note/00000000-0000-0000-0000-000000000002?ownerIdentifier=x"
+    try library.insert(["Z_PK": 200, "Z_ENT": 5, "ZIDENTIFIER": "ATT-LINK", "ZNOTE": 100,
+                        "ZTYPEUTI": NoteLink.linkAttachmentUTI, "ZTOKENCONTENTIDENTIFIER": target])
+    try library.insert(["Z_PK": 201, "Z_ENT": 5, "ZIDENTIFIER": "ATT-IMG", "ZNOTE": 100,
+                        "ZTYPEUTI": "public.jpeg", "ZTOKENCONTENTIDENTIFIER": "x"])
+    let reader = try NotesReader(databaseURL: library.url)
+
+    #expect(try reader.attachmentLinkTargets(ids: ["ATT-LINK", "ATT-IMG", "ATT-NONE"]) == ["ATT-LINK": target])
+    #expect(try reader.attachmentLinkTargets(ids: []).isEmpty)
+    #expect(try reader.noteIdentifier(key: 100) == "N-100")
+    #expect(try reader.noteIdentifier(key: 10) == nil)
+    #expect(try reader.noteIdentifier(key: 9999) == nil)
+}

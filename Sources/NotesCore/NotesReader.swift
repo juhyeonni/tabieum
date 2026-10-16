@@ -64,6 +64,7 @@ public final class NotesReader {
     private let creationColumns: [String]
     private let modificationColumns: [String]
     private let accountLinkColumns: [String]
+    private let hasLinkTargets: Bool
 
     public init(databaseURL: URL = NotesReader.defaultDatabaseURL) throws {
         let path = databaseURL.path
@@ -89,6 +90,8 @@ public final class NotesReader {
             accountLinkColumns = (columns.contains("ZOWNER") ? ["ZOWNER"] : [])
                 + columns.filter { $0.hasPrefix("ZACCOUNT") && Int($0.dropFirst(8)) != nil }
                     .sorted { Int($0.dropFirst(8))! < Int($1.dropFirst(8))! }
+
+            hasLinkTargets = columns.isSuperset(of: ["ZTYPEUTI", "ZTOKENCONTENTIDENTIFIER"])
 
             var missing = Self.requiredColumns.filter { !columns.contains($0) }
             if titleColumns.isEmpty { missing.append("ZTITLE") }
@@ -189,6 +192,25 @@ public final class NotesReader {
             """) {
             NoteStamp(id: Self.text($0, 0) ?? "", modified: Date(timeIntervalSinceReferenceDate: sqlite3_column_double($0, 1)))
         }
+    }
+
+    /// The `applenotes:` URL each inline link attachment points at, by attachment identifier.
+    public func attachmentLinkTargets(ids: [String]) throws -> [String: String] {
+        guard hasLinkTargets, !ids.isEmpty else { return [:] }
+        let list = ids.map { "'" + $0.replacingOccurrences(of: "'", with: "''") + "'" }.joined(separator: ", ")
+        let pairs = try query("""
+            SELECT ZIDENTIFIER, ZTOKENCONTENTIDENTIFIER FROM \(Self.objects)
+            WHERE ZTYPEUTI = '\(NoteLink.linkAttachmentUTI)' AND ZIDENTIFIER IN (\(list))
+              AND ZTOKENCONTENTIDENTIFIER IS NOT NULL
+            """) { (Self.text($0, 0) ?? "", Self.text($0, 1) ?? "") }
+        return Dictionary(pairs, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// The identifier of the note with database key `key`, or nil when it is not a note.
+    public func noteIdentifier(key: Int) throws -> String? {
+        try query("SELECT ZIDENTIFIER FROM \(Self.objects) WHERE Z_PK = \(key) AND Z_ENT = \(noteEntity)") {
+            Self.text($0, 0)
+        }.first ?? nil
     }
 
     private func readNotes(where extra: String) throws -> [Note] {
