@@ -15,8 +15,12 @@ public final class FeatureToggles: ObservableObject {
         }
     }
 
+    /// The folder, in every account, whose notes the `/` panel lists as templates.
+    @Published public var templateFolder: String { didSet { defaults.set(templateFolder, forKey: "templateFolder") } }
+
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        templateFolder = defaults.string(forKey: "templateFolder") ?? "Templates"
         vimEnabled = defaults.bool(forKey: "vimEnabled")
         vimJKEnabled = defaults.bool(forKey: "vimJKEnabled")
         ragEnabled = defaults.bool(forKey: "ragEnabled")

@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private lazy var caretOverlay = CaretOverlay(tracker: tracker)
     private var markdownShortcuts: MarkdownShortcuts?
     private var vim: VimController?
+    private var slashCommands: SlashCommands?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let name = ProductInfo.main?.name ?? ProcessInfo.processInfo.processName
@@ -30,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ai.config = AISettings.savedConfig()
         markdownShortcuts = MarkdownShortcuts(tracker: tracker, toggles: toggles)
         vim = VimController(tracker: tracker, toggles: toggles)
+        slashCommands = SlashCommands(tracker: tracker, toggles: toggles)
 
         Task {
             await status.refresh()

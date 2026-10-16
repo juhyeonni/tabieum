@@ -93,6 +93,10 @@ struct SettingsView: View {
                     Toggle("\(style.marker.trimmingCharacters(in: .whitespacesAndNewlines))  \(style.displayName)",
                            isOn: markdownBinding(style))
                 }
+                Divider()
+                TextField("Templates folder", text: $toggles.templateFolder)
+                Text("Type / in a note to insert one of this folder's notes, from any account.")
+                    .font(.callout).foregroundStyle(.secondary)
             }
             .padding()
             .tabItem { Label("General", systemImage: "gearshape") }
