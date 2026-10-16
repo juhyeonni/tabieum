@@ -50,7 +50,8 @@ enum NotesControl {
     private static var loggedMissing: Set<NotesStyle> = []
     private static let log = Logger(subsystem: "NotesExtension", category: "notes")
 
-    /// Deletes `range` and presses the style's Format menu item.
+    /// Deletes `range`, waits until Notes has applied the delete, then presses the style's Format menu item.
+    /// Pressing first would turn an empty line into an empty list item that the late delete then unlists.
     static func apply(_ style: NotesStyle, replacing range: NSRange, tracker: TextFocusTracker) {
         guard let pid else { return }
         guard let item = menuItem(for: style, pid: pid) else {
@@ -60,8 +61,15 @@ enum NotesControl {
             return
         }
         tracker.setSelectedRange(range)
+        let before = tracker.textLength
         postDelete(to: pid)
-        AXUIElementPerformAction(item, kAXPressAction as CFString)
+        Task {
+            // ponytail: gives up after 0.5 s and presses anyway
+            for _ in 0..<50 where tracker.textLength == before {
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+            AXUIElementPerformAction(item, kAXPressAction as CFString)
+        }
     }
 
     private static func menuItem(for style: NotesStyle, pid: pid_t) -> AXUIElement? {
