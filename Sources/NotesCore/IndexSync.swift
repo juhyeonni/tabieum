@@ -25,7 +25,7 @@ extension SearchIndex {
         try remove(known.keys.filter { !listed.contains($0) })
         guard !changed.isEmpty else { return }
 
-        let folderNames = Dictionary(try source.folders().map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        let folders = Dictionary(try source.folders().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         for start in stride(from: 0, to: changed.count, by: 200) {
             let notes = try source.notes(ids: Array(changed[start..<min(start + 200, changed.count)]))
             try upsert(notes.map { note in
@@ -36,8 +36,8 @@ extension SearchIndex {
                     log("cannot decode note \(note.id), indexing its title only: \(error)")
                     body = ""
                 }
-                return IndexedNote(id: note.id, title: note.title, folder: folderNames[note.folderID] ?? "",
-                                   modified: note.modified, body: body)
+                return IndexedNote(id: note.id, title: note.title, folder: folders[note.folderID]?.name ?? "",
+                                   modified: note.modified, body: body, owner: folders[note.folderID]?.accountID ?? "")
             })
         }
     }

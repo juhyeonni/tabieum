@@ -42,3 +42,24 @@ private func freshSuite() -> UserDefaults {
     #expect(Permission.fullDiskAccess.settingsURL.absoluteString == base + "Privacy_AllFiles")
     #expect(Permission.automation.settingsURL.absoluteString == base + "Privacy_Automation")
 }
+
+@Test func shortcutValidation() {
+    let n: UInt32 = 45
+    #expect(Shortcut(keyCode: n, modifiers: [.command]).isValid)
+    #expect(Shortcut(keyCode: n, modifiers: [.control, .shift]).isValid)
+    #expect(!Shortcut(keyCode: n, modifiers: [.option]).isValid)
+    #expect(!Shortcut(keyCode: n, modifiers: [.shift, .option]).isValid)
+    #expect(!Shortcut(keyCode: n, modifiers: []).isValid)
+    #expect(!Shortcut(keyCode: 122, modifiers: [.command]).isValid)
+}
+
+@Test func shortcutRoundTripsThroughDefaults() {
+    let defaults = freshSuite()
+    #expect(FeatureToggles(defaults: defaults).searchShortcut.display == "⌃⌥⌘N")
+    let toggles = FeatureToggles(defaults: defaults)
+    let custom = Shortcut(keyCode: 1, modifiers: [.command, .shift])
+    toggles.searchShortcut = custom
+    #expect(FeatureToggles(defaults: defaults).searchShortcut == custom)
+    toggles.searchShortcut = .default
+    #expect(FeatureToggles(defaults: defaults).searchShortcut.display == "⌃⌥⌘N")
+}
