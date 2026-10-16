@@ -65,3 +65,13 @@ private func key(_ code: Int, shift: Bool = false, control: Bool = false, comman
     #expect(VimBuffer(text: text, selection: NSRange(location: 5, length: 0)).caretLineHasAttachment)
     #expect(!VimBuffer(text: text, selection: NSRange(location: text.utf16.count, length: 0)).caretLineHasAttachment)
 }
+
+@Test func unsupportedLinesTurnBasicMotionsIntoArrowKeys() {
+    #expect(fallbackArrowKeyCode(for: .motion(.left)) == 123)
+    #expect(fallbackArrowKeyCode(for: .motion(.right)) == 124)
+    #expect(fallbackArrowKeyCode(for: .motion(.down)) == 125)
+    #expect(fallbackArrowKeyCode(for: .motion(.up)) == 126)
+    #expect(fallbackArrowKeyCode(for: .motion(.wordForward)) == nil)
+    #expect(fallbackArrowKeyCode(for: .deleteChar) == nil)
+    #expect(fallbackArrowKeyCode(for: .none) == nil)
+}

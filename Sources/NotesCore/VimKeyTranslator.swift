@@ -36,3 +36,15 @@ public func vimKey(
     guard let character else { return nil }
     return VimKey(character, control: control, command: command)
 }
+
+/// Where Vim cannot trust the AX ranges (tables, attachments), a left, down, up or right motion is the arrow key instead.
+public func fallbackArrowKeyCode(for command: VimCommand) -> Int? {
+    guard case .motion(let motion) = command else { return nil }
+    return switch motion {
+    case .left: 123
+    case .right: 124
+    case .down: 125
+    case .up: 126
+    default: nil
+    }
+}
