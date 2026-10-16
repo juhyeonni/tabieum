@@ -16,6 +16,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var vim: VimController?
     private var slashCommands: SlashCommands?
     private var indexService: IndexService?
+    private var searchPanel: SearchPanel?
+    private lazy var searchShortcut = ShortcutController(toggles: toggles) { [weak self] in self?.searchPanel?.show() }
     private var aiAssistant: AIAssistant?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -41,7 +43,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let service = IndexService(indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier))
             service.start()
             indexService = service
+            searchPanel = SearchPanel(indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier))
         }
+        _ = searchShortcut
 
         Task {
             await status.refresh()
@@ -51,7 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func showSettings() {
         let window = settingsWindow ?? makeWindow(title: "Settings", view: SettingsView(
-            status: status, toggles: toggles, ai: ai, showOnboarding: { [weak self] in self?.showOnboarding() }))
+            status: status, toggles: toggles, ai: ai, shortcut: searchShortcut, showOnboarding: { [weak self] in self?.showOnboarding() }))
         settingsWindow = window
         show(window)
     }

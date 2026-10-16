@@ -26,6 +26,21 @@ public final class FeatureToggles: ObservableObject {
     /// The folder, in every account, whose notes the `/` panel lists as templates.
     @Published public var templateFolder: String { didSet { defaults.set(templateFolder, forKey: "templateFolder") } }
 
+    /// The global shortcut that opens the search panel.
+    public var searchShortcut: Shortcut {
+        get {
+            guard let code = defaults.object(forKey: "searchShortcut.keyCode") as? Int,
+                  let flags = defaults.object(forKey: "searchShortcut.modifiers") as? Int
+            else { return .default }
+            let shortcut = Shortcut(keyCode: UInt32(code), modifiers: .init(rawValue: UInt32(flags)))
+            return shortcut.isValid ? shortcut : .default
+        }
+        set {
+            defaults.set(Int(newValue.keyCode), forKey: "searchShortcut.keyCode")
+            defaults.set(Int(newValue.modifiers.rawValue), forKey: "searchShortcut.modifiers")
+        }
+    }
+
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         templateFolder = defaults.string(forKey: "templateFolder") ?? "Templates"
