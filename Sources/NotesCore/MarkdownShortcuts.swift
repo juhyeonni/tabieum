@@ -21,6 +21,12 @@ public enum NotesStyle: String, CaseIterable, Sendable {
         }
     }
 
+    /// The key equivalent written as Notes' menu shows it, such as ⇧⌘H.
+    public var shortcut: String {
+        let (char, modifiers) = keyEquivalent
+        return (modifiers == 1 ? "⇧⌘" : "⌘") + char
+    }
+
     public var displayName: String {
         switch self {
         case .title: "Title"

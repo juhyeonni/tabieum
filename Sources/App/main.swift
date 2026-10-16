@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         markdownShortcuts = MarkdownShortcuts(tracker: tracker, toggles: toggles)
         vim = VimController(tracker: tracker, toggles: toggles)
         slashCommands = SlashCommands(tracker: tracker, toggles: toggles)
+        vim?.claimsKey = { [weak self] in self?.slashCommands?.claims(keyCode: $0) ?? false }
 
         Task {
             await status.refresh()
