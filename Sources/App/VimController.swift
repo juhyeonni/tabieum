@@ -38,6 +38,7 @@ private struct TapKey: Sendable {
 @MainActor
 final class VimController {
     private static let eventTag: Int64 = 0x4E4F_5445
+    private static let escapeKeyCode: Int64 = 53
     private static let transientType = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
 
     private let tracker: TextFocusTracker
@@ -52,6 +53,8 @@ final class VimController {
     var claimsKey: (Int64) -> Bool = { _ in false }
 
     private var active = false
+    /// The note body is focused but Vim cannot trust AX here (a table or attachment line, a selection that does not stick).
+    private var unsupported = false
     private var mismatchLine: NSRange?
     private var swallowed: Set<Int64> = []
     private var queue: [VimCommand] = []
@@ -98,6 +101,7 @@ final class VimController {
         if let subscription { tracker.unsubscribe(subscription) }
         subscription = nil
         active = false
+        unsupported = false
         swallowed = []
         queue = []
         indicator.hide()
@@ -114,7 +118,8 @@ final class VimController {
         if event.tag == Self.eventTag { return true }
         let keyCode = event.keyCode
         if type == .keyUp { return swallowed.remove(keyCode) == nil }
-        guard active, NSApp.keyWindow == nil, !claimsKey(keyCode) else { return true }
+        guard active || unsupported, NSApp.keyWindow == nil, !claimsKey(keyCode) else { return true }
+        if !active, engine.mode == .insert, keyCode != Self.escapeKeyCode { return true }
         let flags = event.flags
         guard let key = vimKey(
             keyCode: Int(keyCode), shift: flags.contains(.maskShift), control: flags.contains(.maskControl),
@@ -122,7 +127,11 @@ final class VimController {
         ) else { return true }
         guard case .consume(let command) = engine.feed(key, at: event.time) else { return true }
         swallowed.insert(keyCode)
-        enqueue(command)
+        if active {
+            enqueue(command)
+        } else if let arrow = fallbackArrowKeyCode(for: command) {
+            post(keyCode: CGKeyCode(arrow))
+        }
         return false
     }
 
@@ -233,6 +242,7 @@ final class VimController {
         let buffer = tracker.buffer()
         if buffer?.caretLine != mismatchLine { mismatchLine = nil }
         active = buffer.map { !$0.caretLineHasAttachment && mismatchLine == nil } ?? false
+        unsupported = buffer != nil && !active
         indicator.show(engine.mode, in: state.editorFrame)
     }
 }
