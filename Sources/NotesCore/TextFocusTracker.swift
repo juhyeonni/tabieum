@@ -14,6 +14,8 @@ public protocol TextFocusSource: AnyObject {
     var focusedRole: String? { get }
     var textLength: Int? { get }
     var text: String? { get }
+    /// The focused editor's frame, in AX coordinates.
+    var frame: CGRect? { get }
     func selectedRange() -> NSRange?
     func setSelectedRange(_ range: NSRange)
     func bounds(for range: NSRange) -> CGRect?
@@ -26,13 +28,16 @@ public struct TextFocusState: Equatable, Sendable {
     public var selection: NSRange?
     /// In AX coordinates.
     public var caretRect: CGRect?
+    /// In AX coordinates.
+    public var editorFrame: CGRect?
 
     public static let notFocused = TextFocusState(isFocused: false)
 
-    public init(isFocused: Bool, selection: NSRange? = nil, caretRect: CGRect? = nil) {
+    public init(isFocused: Bool, selection: NSRange? = nil, caretRect: CGRect? = nil, editorFrame: CGRect? = nil) {
         self.isFocused = isFocused
         self.selection = selection
         self.caretRect = caretRect
+        self.editorFrame = editorFrame
     }
 }
 
@@ -57,7 +62,8 @@ public final class TextFocusTracker {
 
     public var state: TextFocusState {
         guard isFocused else { return .notFocused }
-        return TextFocusState(isFocused: true, selection: source.selectedRange(), caretRect: caretRect())
+        return TextFocusState(
+            isFocused: true, selection: source.selectedRange(), caretRect: caretRect(), editorFrame: source.frame)
     }
 
     public func selectedRange() -> NSRange? {
@@ -87,13 +93,11 @@ public final class TextFocusTracker {
 
     public func caretRect() -> CGRect? {
         guard isFocused, let range = source.selectedRange() else { return nil }
-        let rect = source.bounds(for: range)
-        if let rect, range.length > 0 || rect.size != .zero { return rect }
-        if range.length > 0 { return nil }
+        if range.length > 0 { return source.bounds(for: range) }
         return neighbourBounds(of: range.location)
     }
 
-    /// The previous character unless it is a line break (which belongs to the line above), else the character at the caret.
+    /// Notes puts the rect of an empty range one line too high, so a caret takes the bounds of a neighbouring character: the previous one unless it is a line break (which belongs to the line above), else the one at the caret.
     private func neighbourBounds(of caret: Int) -> CGRect? {
         guard let text = source.text.map({ $0 as NSString }) else { return nil }
         let location: Int

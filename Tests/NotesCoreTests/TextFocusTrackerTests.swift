@@ -9,6 +9,7 @@ final class FakeSource: TextFocusSource {
     var frontmostBundleID: String? = TextFocusTracker.notesBundleID
     var focusedRole: String? = TextFocusTracker.editorRole
     var text: String? = "hello"
+    var frame: CGRect?
     var selection = NSRange(location: 0, length: 0)
     var boundsByRange: [NSRange: CGRect] = [:]
     var boundsQueries: [NSRange] = []
@@ -99,7 +100,7 @@ final class FakeSource: TextFocusSource {
     let source = FakeSource()
     source.text = ""
     #expect(TextFocusTracker(source: source).caretRect() == nil)
-    #expect(source.boundsQueries == [NSRange(location: 0, length: 0)])
+    #expect(source.boundsQueries.isEmpty)
 }
 
 @MainActor @Test func zeroSizeCaretAtLineStartUsesCharacterAtCaret() {
@@ -135,12 +136,17 @@ final class FakeSource: TextFocusSource {
     #expect(TextFocusTracker(source: source).caretRect() == nil)
 }
 
-@MainActor @Test func nonZeroCaretAndSelectionUseTheirOwnBounds() {
+@MainActor @Test func emptyRangeRectWithHeightIsNotTrusted() {
     let source = FakeSource()
-    let caret = CGRect(x: 5, y: 5, width: 0, height: 18)
-    source.boundsByRange[NSRange(location: 0, length: 0)] = caret
-    #expect(TextFocusTracker(source: source).caretRect() == caret)
+    source.selection = NSRange(location: 3, length: 0)
+    source.boundsByRange[NSRange(location: 3, length: 0)] = CGRect(x: 40, y: 92, width: 0, height: 28)
+    let previous = CGRect(x: 30, y: 120, width: 8, height: 28)
+    source.boundsByRange[NSRange(location: 2, length: 1)] = previous
+    #expect(TextFocusTracker(source: source).caretRect() == previous)
+}
 
+@MainActor @Test func selectionUsesItsOwnBounds() {
+    let source = FakeSource()
     source.selection = NSRange(location: 1, length: 3)
     let selected = CGRect(x: 10, y: 5, width: 24, height: 18)
     source.boundsByRange[source.selection] = selected
