@@ -70,4 +70,12 @@ import Testing
         #expect(try reader.noteKeys(title: "Title") == [101, 100])
         #expect(try reader.noteKeys(title: "O'Nope").isEmpty)
     }
+
+    @Test func noteKeysMatchATitleWhoseSpacesNotesCollapsed() throws {
+        let lib = try library()
+        try lib.note(pk: 103, id: "N-103", title: "Golden   fixture\t← Title", folder: 10, created: 1, modified: 6, snippet: nil, body: Self.body)
+        let reader = try NotesReader(databaseURL: lib.url)
+        #expect(try reader.noteKeys(title: "Golden fixture ← Title") == [103])
+        #expect(try reader.noteKeys(title: "Golden fixture").isEmpty)
+    }
 }
