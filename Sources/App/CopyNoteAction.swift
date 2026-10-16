@@ -1,7 +1,7 @@
 import AppKit
 import NotesCore
 
-/// Copies the note open in Notes to the pasteboard, or shows an alert naming why it could not.
+/// Copies the note open in Notes to the pasteboard and says so briefly, or shows an alert naming why it could not.
 @MainActor
 enum CopyNoteAction {
     static func markdown() {
@@ -9,6 +9,7 @@ enum CopyNoteAction {
             let text = try CopyNote.markdown(key: key, from: reader)
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
+            Toast.show("Copied as Markdown")
         }
     }
 
@@ -18,6 +19,7 @@ enum CopyNoteAction {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.writeObjects([url as NSURL])
             NSPasteboard.general.setString(url.absoluteString, forType: .string)
+            Toast.show("Copied deeplink")
         }
     }
 

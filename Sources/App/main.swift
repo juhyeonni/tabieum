@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private lazy var copyLinkShortcut = ShortcutController(
         toggles: toggles, title: "Copy Deeplink shortcut", id: 3, keyPath: \.copyLinkShortcut) { CopyNoteAction.link() }
     private var aiAssistant: AIAssistant?
+    private var actionButton: ActionButton?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let name = ProductInfo.main?.name ?? ProcessInfo.processInfo.processName
@@ -55,6 +56,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         aiAssistant = AIAssistant(
             tracker: tracker, toggles: toggles, feature: ai,
             indexURL: ProductInfo.main.map { SearchIndex.defaultURL(bundleIdentifier: $0.bundleIdentifier) }, registry: slash.registry)
+        actionButton = ActionButton(tracker: tracker, toggles: toggles) { [weak self] item in
+            switch item {
+            case .copyMarkdown: CopyNoteAction.markdown()
+            case .copyDeeplink: CopyNoteAction.link()
+            case .backlinks: if self?.backlinksPanel?.isVisible == false { self?.backlinksPanel?.toggle() }
+            case .askNotes: self?.aiAssistant?.open()
+            case .settings: self?.showSettings()
+            }
+        }
         vim?.claimsKey = { [weak self] in self?.slashCommands?.claims(keyCode: $0) ?? false }
         if let bundleIdentifier = ProductInfo.main?.bundleIdentifier {
             let indexURL = SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier)
