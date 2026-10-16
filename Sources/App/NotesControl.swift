@@ -14,6 +14,30 @@ enum NotesControl {
 
     static func postPaste(to pid: pid_t) { postKey(9, flags: .maskCommand, to: pid) }
 
+    /// Pastes through a transient pasteboard item and puts the previous contents back afterwards.
+    static func paste(plain: String, html: String? = nil, to pid: pid_t) {
+        let pasteboard = NSPasteboard.general
+        let saved = (pasteboard.pasteboardItems ?? []).map { item in
+            let copy = NSPasteboardItem()
+            for type in item.types {
+                if let data = item.data(forType: type) { copy.setData(data, forType: type) }
+            }
+            return copy
+        }
+        let item = NSPasteboardItem()
+        if let html { item.setString("<meta charset=\"utf-8\">" + html, forType: .html) }
+        item.setString(plain, forType: .string)
+        item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
+        pasteboard.clearContents()
+        pasteboard.writeObjects([item])
+        postPaste(to: pid)
+        // ponytail: fixed delay for Notes to read the paste; nothing reports when it has.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            pasteboard.clearContents()
+            pasteboard.writeObjects(saved)
+        }
+    }
+
     private static func postKey(_ key: CGKeyCode, flags: CGEventFlags, to pid: pid_t) {
         let source = CGEventSource(stateID: .hidSystemState)
         for keyDown in [true, false] {
@@ -26,7 +50,8 @@ enum NotesControl {
     private static var loggedMissing: Set<NotesStyle> = []
     private static let log = Logger(subsystem: "NotesExtension", category: "notes")
 
-    /// Deletes `range` and presses the style's Format menu item.
+    /// Deletes `range`, waits until Notes has applied the delete, then presses the style's Format menu item.
+    /// Pressing first would turn an empty line into an empty list item that the late delete then unlists.
     static func apply(_ style: NotesStyle, replacing range: NSRange, tracker: TextFocusTracker) {
         guard let pid else { return }
         guard let item = menuItem(for: style, pid: pid) else {
@@ -36,8 +61,15 @@ enum NotesControl {
             return
         }
         tracker.setSelectedRange(range)
+        let before = tracker.textLength
         postDelete(to: pid)
-        AXUIElementPerformAction(item, kAXPressAction as CFString)
+        Task {
+            // ponytail: gives up after 0.5 s and presses anyway
+            for _ in 0..<50 where tracker.textLength == before {
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+            AXUIElementPerformAction(item, kAXPressAction as CFString)
+        }
     }
 
     private static func menuItem(for style: NotesStyle, pid: pid_t) -> AXUIElement? {
