@@ -154,7 +154,7 @@ final class VimController {
                 recordLatency(since: start)
             }
             draining = false
-            refresh(tracker.state)
+            refresh(tracker.state(withCaretRect: false))
         }
     }
 
@@ -194,7 +194,7 @@ final class VimController {
             let before = tracker.textLength
             post(keyCode: 6, flags: .maskCommand)
             // ponytail: an undo that keeps the length just waits out the timeout; compare text if that feels slow
-            _ = await wait(attempts: 30) { $0 != before }
+            _ = await wait(attempts: 150) { $0 != before }
             return true
         }
     }
@@ -204,7 +204,7 @@ final class VimController {
         guard tracker.selectedRange() == range else {
             mismatchLine = tracker.buffer()?.caretLine
             log.info("Vim: selection write read back differently; passing keys through on this line")
-            refresh(tracker.state)
+            refresh(tracker.state(withCaretRect: false))
             return false
         }
         return true
@@ -244,10 +244,10 @@ final class VimController {
     }
 
     /// Polls the note's length until Notes has applied a synthesized edit, so the next action reads fresh text.
-    private func wait(attempts: Int = 50, _ done: (Int?) -> Bool) async -> Bool {
+    private func wait(attempts: Int = 250, _ done: (Int?) -> Bool) async -> Bool {
         for _ in 0..<attempts {
             if done(tracker.textLength) { return true }
-            try? await Task.sleep(for: .milliseconds(10))
+            try? await Task.sleep(for: .milliseconds(2))
         }
         return false
     }
