@@ -17,6 +17,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var slashCommands: SlashCommands?
     private var indexService: IndexService?
     private var backlinksPanel: BacklinksPanel?
+    private var searchPanel: SearchPanel?
+    private lazy var searchShortcut = ShortcutController(toggles: toggles) { [weak self] in self?.searchPanel?.show() }
+    private var aiAssistant: AIAssistant?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let name = ProductInfo.main?.name ?? ProcessInfo.processInfo.processName
@@ -34,14 +37,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ai.config = AISettings.savedConfig()
         markdownShortcuts = MarkdownShortcuts(tracker: tracker, toggles: toggles)
         vim = VimController(tracker: tracker, toggles: toggles)
-        slashCommands = SlashCommands(tracker: tracker, toggles: toggles)
+        let slash = SlashCommands(tracker: tracker, toggles: toggles)
+        slashCommands = slash
+        aiAssistant = AIAssistant(tracker: tracker, toggles: toggles, feature: ai, registry: slash.registry)
+        vim?.claimsKey = { [weak self] in self?.slashCommands?.claims(keyCode: $0) ?? false }
         if let bundleIdentifier = ProductInfo.main?.bundleIdentifier {
             let indexURL = SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier)
             let service = IndexService(indexURL: indexURL)
             service.start()
             indexService = service
+            searchPanel = SearchPanel(indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier))
             backlinksPanel = BacklinksPanel(indexURL: indexURL)
         }
+        _ = searchShortcut
 
         Task {
             await status.refresh()
@@ -51,7 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func showSettings() {
         let window = settingsWindow ?? makeWindow(title: "Settings", view: SettingsView(
-            status: status, toggles: toggles, ai: ai, showOnboarding: { [weak self] in self?.showOnboarding() }))
+            status: status, toggles: toggles, ai: ai, shortcut: searchShortcut, showOnboarding: { [weak self] in self?.showOnboarding() }))
         settingsWindow = window
         show(window)
     }
