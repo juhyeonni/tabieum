@@ -10,6 +10,7 @@ enum SQLiteValue {
     case text(String)
     case real(Double)
     case int(Int64)
+    case blob(Data)
 }
 
 final class SQLiteConnection {
@@ -48,6 +49,8 @@ final class SQLiteConnection {
             case .text(let value): sqlite3_bind_text(statement, index, value, -1, transient)
             case .real(let value): sqlite3_bind_double(statement, index, value)
             case .int(let value): sqlite3_bind_int64(statement, index, value)
+            case .blob(let value):
+                _ = value.withUnsafeBytes { sqlite3_bind_blob(statement, index, $0.baseAddress, Int32($0.count), transient) }
             }
         }
         var result: [T] = []
@@ -72,6 +75,10 @@ final class SQLiteConnection {
 
     private func lastError() -> SQLiteError {
         SQLiteError(message: String(cString: sqlite3_errmsg(db)), code: sqlite3_errcode(db))
+    }
+
+    static func blob(_ statement: OpaquePointer, _ index: Int32) -> UnsafeRawBufferPointer {
+        UnsafeRawBufferPointer(start: sqlite3_column_blob(statement, index), count: Int(sqlite3_column_bytes(statement, index)))
     }
 
     static func text(_ statement: OpaquePointer, _ index: Int32) -> String {
