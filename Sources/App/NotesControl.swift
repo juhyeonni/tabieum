@@ -14,6 +14,30 @@ enum NotesControl {
 
     static func postPaste(to pid: pid_t) { postKey(9, flags: .maskCommand, to: pid) }
 
+    /// Pastes through a transient pasteboard item and puts the previous contents back afterwards.
+    static func paste(plain: String, html: String? = nil, to pid: pid_t) {
+        let pasteboard = NSPasteboard.general
+        let saved = (pasteboard.pasteboardItems ?? []).map { item in
+            let copy = NSPasteboardItem()
+            for type in item.types {
+                if let data = item.data(forType: type) { copy.setData(data, forType: type) }
+            }
+            return copy
+        }
+        let item = NSPasteboardItem()
+        if let html { item.setString("<meta charset=\"utf-8\">" + html, forType: .html) }
+        item.setString(plain, forType: .string)
+        item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
+        pasteboard.clearContents()
+        pasteboard.writeObjects([item])
+        postPaste(to: pid)
+        // ponytail: fixed delay for Notes to read the paste; nothing reports when it has.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            pasteboard.clearContents()
+            pasteboard.writeObjects(saved)
+        }
+    }
+
     private static func postKey(_ key: CGKeyCode, flags: CGEventFlags, to pid: pid_t) {
         let source = CGEventSource(stateID: .hidSystemState)
         for keyDown in [true, false] {

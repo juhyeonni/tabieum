@@ -51,34 +51,11 @@ final class SlashCommands {
             guard let (html, plain) = content(of: id) else { return }
             tracker.setSelectedRange(range)
             NotesControl.postDelete(to: pid)
-            paste(html: strippingFirstLine(html: html), plain: strippingFirstLine(plainText: plain), pid: pid)
+            NotesControl.paste(plain: strippingFirstLine(plainText: plain), html: strippingFirstLine(html: html), to: pid)
         case let .command(index):
             tracker.setSelectedRange(range)
             NotesControl.postDelete(to: pid)
             registry.commands[index].run()
-        }
-    }
-
-    private func paste(html: String, plain: String, pid: pid_t) {
-        let pasteboard = NSPasteboard.general
-        let saved = (pasteboard.pasteboardItems ?? []).map { item in
-            let copy = NSPasteboardItem()
-            for type in item.types {
-                if let data = item.data(forType: type) { copy.setData(data, forType: type) }
-            }
-            return copy
-        }
-        let item = NSPasteboardItem()
-        item.setString("<meta charset=\"utf-8\">" + html, forType: .html)
-        item.setString(plain, forType: .string)
-        item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
-        pasteboard.clearContents()
-        pasteboard.writeObjects([item])
-        NotesControl.postPaste(to: pid)
-        // ponytail: fixed delay for Notes to read the paste; nothing reports when it has.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            pasteboard.clearContents()
-            pasteboard.writeObjects(saved)
         }
     }
 
