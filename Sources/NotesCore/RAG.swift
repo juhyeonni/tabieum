@@ -224,7 +224,7 @@ extension SearchIndex {
             """, [.text(id)]) {
             IndexedNote(id: SQLiteConnection.text($0, 0), title: SQLiteConnection.text($0, 1), folder: "",
                         modified: Date(timeIntervalSinceReferenceDate: sqlite3_column_double($0, 3)),
-                        body: SQLiteConnection.text($0, 2))
+                        body: SQLiteConnection.text($0, 2), owner: "")
         }.first
     }
 
@@ -310,11 +310,12 @@ extension SearchIndex {
 
     private func noteResult(_ id: String, snippet: String) throws -> SearchResult? {
         try db.rows("""
-            SELECT n.id, f.title, f.folder, n.modified FROM notes n JOIN notes_fts f ON f.rowid = n.rowid WHERE n.id = ?1
+            SELECT n.id, f.title, f.folder, n.modified, f.owner FROM notes n JOIN notes_fts f ON f.rowid = n.rowid WHERE n.id = ?1
             """, [.text(id)]) {
             SearchResult(id: SQLiteConnection.text($0, 0), title: SQLiteConnection.text($0, 1),
                          folder: SQLiteConnection.text($0, 2),
-                         modified: Date(timeIntervalSinceReferenceDate: sqlite3_column_double($0, 3)), snippet: snippet)
+                         modified: Date(timeIntervalSinceReferenceDate: sqlite3_column_double($0, 3)), snippet: snippet,
+                         ownerIdentifier: Optional(SQLiteConnection.text($0, 4)).flatMap { $0.isEmpty ? nil : $0 })
         }.first
     }
 }

@@ -13,6 +13,7 @@ private final class FakeNotes: NoteSource, @unchecked Sendable {
     func noteStamps() throws -> [NoteStamp] { notes.values.map { NoteStamp(id: $0.id, modified: $0.modified) } }
     func notes(ids: [String]) throws -> [Note] { ids.compactMap { notes[$0] } }
     func folders() throws -> [Folder] { [Folder(id: "f1", name: "Work", accountID: "a", parentID: nil)] }
+    func attachmentLinkTargets(ids: [String]) throws -> [String: String] { [:] }
 }
 
 /// Texts mentioning a car or an automobile share one direction; everything else is orthogonal.
