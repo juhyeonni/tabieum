@@ -97,7 +97,10 @@ struct SettingsView: View {
             .padding()
             .tabItem { Label("General", systemImage: "gearshape") }
             featureTab($toggles.vimEnabled, title: "Enable Vim mode",
-                       detail: "Vim-style modal editing inside Notes.")
+                       detail: "Vim-style modal editing inside Notes.") {
+                Toggle("Leave Insert mode with jk", isOn: $toggles.vimJKEnabled)
+                    .disabled(!toggles.vimEnabled)
+            }
                 .tabItem { Label("Vim", systemImage: "keyboard") }
             featureTab($toggles.ragEnabled, title: "Enable RAG search",
                        detail: "Local semantic search over your notes. Runs on this Mac only.")
@@ -118,10 +121,14 @@ struct SettingsView: View {
         )
     }
 
-    private func featureTab(_ isOn: Binding<Bool>, title: String, detail: String) -> some View {
+    private func featureTab(
+        _ isOn: Binding<Bool>, title: String, detail: String,
+        @ViewBuilder extra: () -> some View = { EmptyView() }
+    ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle(title, isOn: isOn)
             Text(detail).font(.callout).foregroundStyle(.secondary)
+            extra()
             Spacer()
         }
         .padding()

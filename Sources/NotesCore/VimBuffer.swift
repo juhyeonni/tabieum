@@ -35,6 +35,17 @@ public struct VimBuffer: Equatable, Sendable {
     public mutating func apply(_ actions: [VimAction]) {
         actions.forEach { apply($0) }
     }
+
+    /// The caret's line, newline included.
+    public var caretLine: NSRange {
+        let ns = text as NSString
+        return ns.lineRange(for: NSRange(location: min(selection.location, ns.length), length: 0))
+    }
+
+    /// U+FFFC stands in for attachments and tables, where AX ranges cannot be trusted.
+    public var caretLineHasAttachment: Bool {
+        (text as NSString).substring(with: caretLine).contains("\u{FFFC}")
+    }
 }
 
 /// The text as `Character`s, with each one's UTF-16 offset, so motions never split a grapheme.

@@ -5,6 +5,7 @@ public final class FeatureToggles: ObservableObject {
     private let defaults: UserDefaults
 
     @Published public var vimEnabled: Bool { didSet { defaults.set(vimEnabled, forKey: "vimEnabled") } }
+    @Published public var vimJKEnabled: Bool { didSet { defaults.set(vimJKEnabled, forKey: "vimJKEnabled") } }
     @Published public var ragEnabled: Bool { didSet { defaults.set(ragEnabled, forKey: "ragEnabled") } }
     @Published public var aiEnabled: Bool { didSet { defaults.set(aiEnabled, forKey: "aiEnabled") } }
     /// Markdown shortcuts that are on. Each is on until turned off.
@@ -17,6 +18,7 @@ public final class FeatureToggles: ObservableObject {
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         vimEnabled = defaults.bool(forKey: "vimEnabled")
+        vimJKEnabled = defaults.bool(forKey: "vimJKEnabled")
         ragEnabled = defaults.bool(forKey: "ragEnabled")
         aiEnabled = defaults.bool(forKey: "aiEnabled")
         markdownStyles = Set(MarkdownStyle.allCases.filter { defaults.object(forKey: Self.key($0)) as? Bool ?? true })

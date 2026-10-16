@@ -70,6 +70,15 @@ public final class TextFocusTracker {
         return TextSnapshot(text: text, caret: range.location)
     }
 
+    public var textLength: Int? {
+        isFocused ? source.textLength : nil
+    }
+
+    public func buffer() -> VimBuffer? {
+        guard isFocused, let text = source.text, let selection = source.selectedRange() else { return nil }
+        return VimBuffer(text: text, selection: selection)
+    }
+
     public func setSelectedRange(_ range: NSRange) {
         guard isFocused, let length = source.textLength else { return }
         let location = min(max(range.location, 0), length)
