@@ -4,6 +4,7 @@ import NotesCore
 import os
 
 private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "NotesExtension", category: "vim")
+private let latencyLog = Logger(subsystem: "dev.juhyeonni.notekit", category: "vim-latency")
 
 private let tapCallback: CGEventTapCallBack = { _, type, event, refcon in
     guard let refcon else { return Unmanaged.passUnretained(event) }
@@ -57,8 +58,13 @@ final class VimController {
     private var unsupported = false
     private var mismatchLine: NSRange?
     private var swallowed: Set<Int64> = []
-    private var queue: [VimCommand] = []
+    private var queue: [(command: VimCommand, start: UInt64)] = []
     private var draining = false
+    private var latencies = LatencyWindow()
+    private var latencyText: String?
+    var showsLatency = false {
+        didSet { if !showsLatency { latencyText = nil } }
+    }
 
     init(tracker: TextFocusTracker, toggles: FeatureToggles) {
         self.tracker = tracker
@@ -128,7 +134,7 @@ final class VimController {
         guard case .consume(let command) = engine.feed(key, at: event.time) else { return true }
         swallowed.insert(keyCode)
         if active {
-            enqueue(command)
+            enqueue(command, start: DispatchTime.now().uptimeNanoseconds)
         } else if let arrow = fallbackArrowKeyCode(for: command) {
             post(keyCode: CGKeyCode(arrow))
         }
@@ -137,17 +143,27 @@ final class VimController {
 
     // MARK: - execution
 
-    private func enqueue(_ command: VimCommand) {
-        queue.append(command)
+    private func enqueue(_ command: VimCommand, start: UInt64) {
+        queue.append((command, start))
         guard !draining else { return }
         draining = true
         Task {
             while !queue.isEmpty {
-                await run(queue.removeFirst())
+                let (command, start) = queue.removeFirst()
+                await run(command)
+                recordLatency(since: start)
             }
             draining = false
-            refresh(tracker.state)
+            refresh(tracker.state(withCaretRect: false))
         }
+    }
+
+    private func recordLatency(since start: UInt64) {
+        let ms = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000
+        latencies.record(ms)
+        let median = latencies.median ?? ms, p90 = latencies.p90 ?? ms
+        latencyLog.notice("key to AX applied: \(ms, format: .fixed(precision: 1)) ms (median \(median, format: .fixed(precision: 1)) ms, p90 \(p90, format: .fixed(precision: 1)) ms)")
+        if showsLatency { latencyText = String(format: "last %.0fms · p90 %.0fms", ms, p90) }
     }
 
     private func run(_ command: VimCommand) async {
@@ -178,7 +194,7 @@ final class VimController {
             let before = tracker.textLength
             post(keyCode: 6, flags: .maskCommand)
             // ponytail: an undo that keeps the length just waits out the timeout; compare text if that feels slow
-            _ = await wait(attempts: 30) { $0 != before }
+            _ = await wait(attempts: 150) { $0 != before }
             return true
         }
     }
@@ -188,7 +204,7 @@ final class VimController {
         guard tracker.selectedRange() == range else {
             mismatchLine = tracker.buffer()?.caretLine
             log.info("Vim: selection write read back differently; passing keys through on this line")
-            refresh(tracker.state)
+            refresh(tracker.state(withCaretRect: false))
             return false
         }
         return true
@@ -228,10 +244,10 @@ final class VimController {
     }
 
     /// Polls the note's length until Notes has applied a synthesized edit, so the next action reads fresh text.
-    private func wait(attempts: Int = 50, _ done: (Int?) -> Bool) async -> Bool {
+    private func wait(attempts: Int = 250, _ done: (Int?) -> Bool) async -> Bool {
         for _ in 0..<attempts {
             if done(tracker.textLength) { return true }
-            try? await Task.sleep(for: .milliseconds(10))
+            try? await Task.sleep(for: .milliseconds(2))
         }
         return false
     }
@@ -244,7 +260,7 @@ final class VimController {
         if buffer?.caretLine != mismatchLine { mismatchLine = nil }
         active = buffer != nil && mismatchLine == nil
         unsupported = buffer != nil && !active
-        indicator.show(engine.mode, in: state.editorFrame)
+        indicator.show(engine.mode, in: state.editorFrame, detail: latencyText)
     }
 }
 
@@ -269,13 +285,14 @@ final class ModeIndicator {
         return panel
     }()
 
-    func show(_ mode: VimMode, in frame: CGRect?) {
+    func show(_ mode: VimMode, in frame: CGRect?, detail: String? = nil) {
         guard let frame, let primary = NSScreen.screens.first else { return hide() }
         label.stringValue = switch mode {
         case .normal: "-- NORMAL --"
         case .insert: "-- INSERT --"
         case .visual: "-- VISUAL --"
         }
+        if let detail { label.stringValue += " " + detail }
         let size = label.fittingSize
         let rect = appKitRect(fromAX: frame, primaryScreenHeight: primary.frame.height)
         panel.setFrame(

@@ -47,23 +47,47 @@ public final class TextFocusTracker {
     nonisolated public static let editorRole = "AXTextArea"
 
     private let source: TextFocusSource
-    private var subscribers: [Int: (TextFocusState) -> Void] = [:]
+    private var subscribers: [Int: (handler: (TextFocusState) -> Void, needsCaretRect: Bool)] = [:]
     private var nextID = 0
+    /// Valid only while one change notification is delivered, so its subscribers share one read.
+    private var cache: (focused: Bool, text: String??)?
 
     public init(source: TextFocusSource) {
         self.source = source
     }
 
     public var isFocused: Bool {
+        if let cache { return cache.focused }
+        return readFocused()
+    }
+
+    private func readFocused() -> Bool {
         source.isTrusted
             && source.frontmostBundleID == Self.notesBundleID
             && source.focusedRole == Self.editorRole
     }
 
-    public var state: TextFocusState {
+    private var text: String? {
+        if let cached = cache?.text { return cached }
+        let text = source.text
+        cache?.text = .some(text)
+        return text
+    }
+
+    private func inNotification<T>(_ body: () -> T) -> T {
+        guard cache == nil else { return body() }
+        cache = (readFocused(), nil)
+        defer { cache = nil }
+        return body()
+    }
+
+    public var state: TextFocusState { state(withCaretRect: true) }
+
+    public func state(withCaretRect: Bool) -> TextFocusState {
         guard isFocused else { return .notFocused }
         return TextFocusState(
-            isFocused: true, selection: source.selectedRange(), caretRect: caretRect(), editorFrame: source.frame)
+            isFocused: true, selection: source.selectedRange(), caretRect: withCaretRect ? caretRect() : nil,
+            editorFrame: source.frame)
     }
 
     public func selectedRange() -> NSRange? {
@@ -72,16 +96,18 @@ public final class TextFocusTracker {
 
     /// The note text and caret, or nil without a focused note body or with a non-empty selection.
     public func snapshot() -> TextSnapshot? {
-        guard isFocused, let text = source.text, let range = source.selectedRange(), range.length == 0 else { return nil }
+        guard isFocused, let text, let range = source.selectedRange(), range.length == 0 else { return nil }
         return TextSnapshot(text: text, caret: range.location)
     }
 
+    /// Always read live: callers poll it to see an edit land, which also drops the text read earlier in this notification.
     public var textLength: Int? {
-        isFocused ? source.textLength : nil
+        cache?.text = nil
+        return isFocused ? source.textLength : nil
     }
 
     public func buffer() -> VimBuffer? {
-        guard isFocused, let text = source.text, let selection = source.selectedRange() else { return nil }
+        guard isFocused, let text, let selection = source.selectedRange() else { return nil }
         return VimBuffer(text: text, selection: selection)
     }
 
@@ -99,7 +125,7 @@ public final class TextFocusTracker {
 
     /// Notes puts the rect of an empty range one line too high, so a caret takes the bounds of a neighbouring character: the previous one unless it is a line break (which belongs to the line above), else the one at the caret.
     private func neighbourBounds(of caret: Int) -> CGRect? {
-        guard let text = source.text.map({ $0 as NSString }) else { return nil }
+        guard let text = text.map({ $0 as NSString }) else { return nil }
         let location: Int
         if caret > 0, caret <= text.length, !Self.lineBreaks.contains(text.character(at: caret - 1)) {
             location = caret - 1
@@ -115,13 +141,14 @@ public final class TextFocusTracker {
     private static let lineBreaks: Set<unichar> = [0x0A, 0x0D, 0x2028, 0x2029]
 
     /// Observing starts with the first subscriber and stops after the last one leaves.
-    public func subscribe(_ handler: @escaping (TextFocusState) -> Void) -> Int {
+    /// The caret rect costs AX bounds queries, so it is filled in only when a subscriber asks for it.
+    public func subscribe(needsCaretRect: Bool = false, _ handler: @escaping (TextFocusState) -> Void) -> Int {
         nextID += 1
-        subscribers[nextID] = handler
+        subscribers[nextID] = (handler, needsCaretRect)
         if subscribers.count == 1 {
             source.startObserving { [weak self] in self?.notify() }
         }
-        handler(state)
+        inNotification { handler(state(withCaretRect: needsCaretRect)) }
         return nextID
     }
 
@@ -131,7 +158,9 @@ public final class TextFocusTracker {
     }
 
     private func notify() {
-        let current = state
-        for handler in subscribers.values { handler(current) }
+        inNotification {
+            let current = state(withCaretRect: subscribers.values.contains { $0.needsCaretRect })
+            for subscriber in subscribers.values { subscriber.handler(current) }
+        }
     }
 }
