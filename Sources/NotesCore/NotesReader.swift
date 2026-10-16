@@ -13,6 +13,11 @@ public struct Folder: Equatable, Sendable {
     public let parentID: String?
 }
 
+public struct NoteStamp: Equatable, Sendable {
+    public let id: String
+    public let modified: Date
+}
+
 public struct Note: Equatable, Sendable {
     public let id: String
     public let title: String
@@ -21,6 +26,12 @@ public struct Note: Equatable, Sendable {
     public let modified: Date
     public let snippet: String?
     public let body: Data
+}
+
+public struct KeyedNote: Equatable, Sendable {
+    public let note: Note
+    public let accountID: String
+    public let locked: Bool
 }
 
 public enum NotesReaderError: Error, Equatable {
@@ -55,6 +66,7 @@ public final class NotesReader {
     private let accountLinkColumns: [String]
     private let mergeableColumns: [String]
     private let typeColumns: [String]
+    private let hasLinkTargets: Bool
 
     public init(databaseURL: URL = NotesReader.defaultDatabaseURL) throws {
         let path = databaseURL.path
@@ -82,6 +94,8 @@ public final class NotesReader {
             accountLinkColumns = (columns.contains("ZOWNER") ? ["ZOWNER"] : [])
                 + columns.filter { $0.hasPrefix("ZACCOUNT") && Int($0.dropFirst(8)) != nil }
                     .sorted { Int($0.dropFirst(8))! < Int($1.dropFirst(8))! }
+
+            hasLinkTargets = columns.isSuperset(of: ["ZTYPEUTI", "ZTOKENCONTENTIDENTIFIER"])
 
             var missing = Self.requiredColumns.filter { !columns.contains($0) }
             if titleColumns.isEmpty { missing.append("ZTITLE") }
@@ -138,6 +152,72 @@ public final class NotesReader {
     }
 
     public func notes() throws -> [Note] {
+        try readNotes(where: "")
+    }
+
+    public func notes(ids: [String]) throws -> [Note] {
+        guard !ids.isEmpty else { return [] }
+        let list = ids.map { "'" + $0.replacingOccurrences(of: "'", with: "''") + "'" }.joined(separator: ", ")
+        return try readNotes(where: "AND n.ZIDENTIFIER IN (\(list))")
+    }
+
+    /// One note by its database key (Z_PK), locked or not; nil when no live note has that key.
+    public func note(key: Int) throws -> KeyedNote? {
+        let title = try mostUsed(titleColumns, entity: noteEntity)
+        let created = try mostUsed(creationColumns, entity: noteEntity)
+        let modified = try mostUsed(modificationColumns, entity: noteEntity)
+        let link = try accountLink()
+        return try query("""
+            SELECT n.ZIDENTIFIER, n.\(title), f.ZIDENTIFIER, n.\(created), n.\(modified), n.ZSNIPPET, d.ZDATA,
+                   a.ZIDENTIFIER, coalesce(n.ZISPASSWORDPROTECTED, 0)
+            FROM \(Self.objects) n
+            JOIN \(Self.objects) f ON f.Z_PK = n.ZFOLDER AND f.Z_ENT = \(folderEntity)
+            JOIN \(Self.objects) a ON a.Z_PK = f.\(link) AND a.Z_ENT = \(accountEntity)
+            LEFT JOIN ZICNOTEDATA d ON d.Z_PK = n.ZNOTEDATA
+            WHERE n.Z_ENT = \(noteEntity) AND n.Z_PK = \(key) AND coalesce(n.ZMARKEDFORDELETION, 0) = 0
+            """) {
+            KeyedNote(
+                note: Note(id: Self.text($0, 0) ?? "", title: Self.text($0, 1) ?? "", folderID: Self.text($0, 2) ?? "",
+                           created: Date(timeIntervalSinceReferenceDate: sqlite3_column_double($0, 3)),
+                           modified: Date(timeIntervalSinceReferenceDate: sqlite3_column_double($0, 4)),
+                           snippet: Self.text($0, 5), body: Self.blob($0, 6)),
+                accountID: Self.text($0, 7) ?? "", locked: sqlite3_column_int64($0, 8) != 0)
+        }.first
+    }
+
+    public func noteStamps() throws -> [NoteStamp] {
+        let modified = try mostUsed(modificationColumns, entity: noteEntity)
+        return try query("""
+            SELECT n.ZIDENTIFIER, n.\(modified)
+            FROM \(Self.objects) n
+            JOIN \(Self.objects) f ON f.Z_PK = n.ZFOLDER AND f.Z_ENT = \(folderEntity)
+            WHERE n.Z_ENT = \(noteEntity) AND \(visibleFolder("f"))
+              AND coalesce(n.ZISPASSWORDPROTECTED, 0) = 0 AND coalesce(n.ZMARKEDFORDELETION, 0) = 0
+            """) {
+            NoteStamp(id: Self.text($0, 0) ?? "", modified: Date(timeIntervalSinceReferenceDate: sqlite3_column_double($0, 1)))
+        }
+    }
+
+    /// The `applenotes:` URL each inline link attachment points at, by attachment identifier.
+    public func attachmentLinkTargets(ids: [String]) throws -> [String: String] {
+        guard hasLinkTargets, !ids.isEmpty else { return [:] }
+        let list = ids.map { "'" + $0.replacingOccurrences(of: "'", with: "''") + "'" }.joined(separator: ", ")
+        let pairs = try query("""
+            SELECT ZIDENTIFIER, ZTOKENCONTENTIDENTIFIER FROM \(Self.objects)
+            WHERE ZTYPEUTI = '\(NoteLink.linkAttachmentUTI)' AND ZIDENTIFIER IN (\(list))
+              AND ZTOKENCONTENTIDENTIFIER IS NOT NULL
+            """) { (Self.text($0, 0) ?? "", Self.text($0, 1) ?? "") }
+        return Dictionary(pairs, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// The identifier of the note with database key `key`, or nil when it is not a note.
+    public func noteIdentifier(key: Int) throws -> String? {
+        try query("SELECT ZIDENTIFIER FROM \(Self.objects) WHERE Z_PK = \(key) AND Z_ENT = \(noteEntity)") {
+            Self.text($0, 0)
+        }.first ?? nil
+    }
+
+    private func readNotes(where extra: String) throws -> [Note] {
         let title = try mostUsed(titleColumns, entity: noteEntity)
         let created = try mostUsed(creationColumns, entity: noteEntity)
         let modified = try mostUsed(modificationColumns, entity: noteEntity)
@@ -148,6 +228,7 @@ public final class NotesReader {
             LEFT JOIN ZICNOTEDATA d ON d.Z_PK = n.ZNOTEDATA
             WHERE n.Z_ENT = \(noteEntity) AND \(visibleFolder("f"))
               AND coalesce(n.ZISPASSWORDPROTECTED, 0) = 0 AND coalesce(n.ZMARKEDFORDELETION, 0) = 0
+              \(extra)
             ORDER BY n.Z_PK
             """) {
             Note(id: Self.text($0, 0) ?? "", title: Self.text($0, 1) ?? "", folderID: Self.text($0, 2) ?? "",

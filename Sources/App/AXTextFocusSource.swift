@@ -25,6 +25,12 @@ final class AXTextFocusSource: TextFocusSource {
         focusedElement().flatMap { value($0, kAXValueAttribute) as String? }
     }
 
+    var frame: CGRect? {
+        guard let element = focusedElement(), let axValue: AXValue = value(element, "AXFrame") else { return nil }
+        var rect = CGRect.zero
+        return AXValueGetValue(axValue, .cgRect, &rect) ? rect : nil
+    }
+
     func selectedRange() -> NSRange? {
         guard let element = focusedElement(),
               let axValue: AXValue = value(element, kAXSelectedTextRangeAttribute)

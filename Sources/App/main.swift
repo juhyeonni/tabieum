@@ -15,6 +15,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var markdownShortcuts: MarkdownShortcuts?
     private var vim: VimController?
     private var slashCommands: SlashCommands?
+    private var indexService: IndexService?
+    private let embeddingItem = NSMenuItem()
+    private var backlinksPanel: BacklinksPanel?
+    private var searchPanel: SearchPanel?
+    private lazy var searchShortcut = ShortcutController(
+        toggles: toggles, title: "Search shortcut", id: 1, keyPath: \.searchShortcut) { [weak self] in self?.searchPanel?.show() }
+    private lazy var copyMarkdownShortcut = ShortcutController(
+        toggles: toggles, title: "Copy as Markdown shortcut", id: 2, keyPath: \.copyMarkdownShortcut) { CopyNoteAction.markdown() }
+    private lazy var copyLinkShortcut = ShortcutController(
+        toggles: toggles, title: "Copy Deeplink shortcut", id: 3, keyPath: \.copyLinkShortcut) { CopyNoteAction.link() }
+    private var aiAssistant: AIAssistant?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let name = ProductInfo.main?.name ?? ProcessInfo.processInfo.processName
@@ -24,6 +35,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
         let overlayItem = menu.addItem(withTitle: "Show Caret Overlay", action: #selector(toggleCaretOverlay(_:)), keyEquivalent: "")
         overlayItem.target = self
+        embeddingItem.isEnabled = false
+        embeddingItem.isHidden = true
+        menu.addItem(embeddingItem)
+        menu.addItem(withTitle: "Backlinks", action: #selector(toggleBacklinks), keyEquivalent: "").target = self
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Copy Note as Markdown", action: #selector(copyMarkdown), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Copy Note Deeplink", action: #selector(copyLink), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit \(name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
@@ -31,7 +49,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ai.config = AISettings.savedConfig()
         markdownShortcuts = MarkdownShortcuts(tracker: tracker, toggles: toggles)
         vim = VimController(tracker: tracker, toggles: toggles)
-        slashCommands = SlashCommands(tracker: tracker, toggles: toggles)
+        let slash = SlashCommands(tracker: tracker, toggles: toggles)
+        slashCommands = slash
+        aiAssistant = AIAssistant(tracker: tracker, toggles: toggles, feature: ai, registry: slash.registry)
+        vim?.claimsKey = { [weak self] in self?.slashCommands?.claims(keyCode: $0) ?? false }
+        if let bundleIdentifier = ProductInfo.main?.bundleIdentifier {
+            let indexURL = SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier)
+            let service = IndexService(
+                indexURL: indexURL,
+                ragEnabled: { UserDefaults.standard.bool(forKey: "ragEnabled") },
+                onProgress: { progress in Task { @MainActor in self.showEmbedding(progress) } })
+            service.start()
+            indexService = service
+            searchPanel = SearchPanel(indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier))
+            backlinksPanel = BacklinksPanel(indexURL: indexURL)
+        }
+        _ = (searchShortcut, copyMarkdownShortcut, copyLinkShortcut)
 
         Task {
             await status.refresh()
@@ -41,9 +74,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func showSettings() {
         let window = settingsWindow ?? makeWindow(title: "Settings", view: SettingsView(
-            status: status, toggles: toggles, ai: ai, showOnboarding: { [weak self] in self?.showOnboarding() }))
+            status: status, toggles: toggles, ai: ai, shortcuts: [searchShortcut, copyMarkdownShortcut, copyLinkShortcut],
+            showOnboarding: { [weak self] in self?.showOnboarding() }, setRAG: { [weak self] in self?.setRAG($0) }))
         settingsWindow = window
         show(window)
+    }
+
+    private func showEmbedding(_ progress: EmbeddingProgress?) {
+        guard let progress else {
+            embeddingItem.isHidden = true
+            return
+        }
+        embeddingItem.title = progress.waitingForModel ? "Embedding: waiting for model" : "Embedding \(progress.done) / \(progress.total)"
+        embeddingItem.isHidden = false
+    }
+
+    private func setRAG(_ on: Bool) {
+        guard on else {
+            toggles.ragEnabled = false
+            indexService?.requestSync()
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Download Apple's embedding model?"
+        alert.informativeText = "RAG search needs Apple's on-device embedding model. macOS downloads it once. Your notes never leave this Mac."
+        alert.addButton(withTitle: "Turn On")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        toggles.ragEnabled = true
+        indexService?.requestSync()
+        Task {
+            await AppleEmbedder.requestAssets()
+            indexService?.requestSync()
+        }
     }
 
     private func showOnboarding() {
@@ -73,6 +136,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let closing = notification.object as? NSWindow
         let anyVisible = [onboardingWindow, settingsWindow].contains { $0 != nil && $0 !== closing && $0!.isVisible }
         status.setPolling(anyVisible)
+    }
+
+    @objc private func copyMarkdown() { CopyNoteAction.markdown() }
+
+    @objc private func copyLink() { CopyNoteAction.link() }
+
+    @objc private func toggleBacklinks() {
+        backlinksPanel?.toggle()
     }
 
     @objc private func toggleCaretOverlay(_ sender: NSMenuItem) {
