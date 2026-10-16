@@ -24,7 +24,10 @@ public enum AIError: Error, Equatable {
     case stream(String)
     case badResponse
     case consentRequired(host: String)
+    case embeddingsUnavailable
 }
+
+public enum AIFormat: String, Sendable { case openAI, anthropic }
 
 public struct ExtraHeader: Equatable, Sendable {
     public let name: String
@@ -65,9 +68,10 @@ public struct AIConfig: Equatable, Sendable {
     public let embeddingModel: String?
     public let apiKey: String?
     public let extraHeaders: [ExtraHeader]
+    public let format: AIFormat
 
     public init?(baseURL: String, chatModel: String, embeddingModel: String? = nil, apiKey: String? = nil,
-                 extraHeaders: [ExtraHeader] = []) {
+                 extraHeaders: [ExtraHeader] = [], format: AIFormat = .openAI) {
         let chatModel = chatModel.trimmingCharacters(in: .whitespaces)
         guard let url = URL(string: baseURL.trimmingCharacters(in: .whitespaces)),
               let host = Self.allowedHost(url), !chatModel.isEmpty
@@ -78,6 +82,7 @@ public struct AIConfig: Equatable, Sendable {
         self.embeddingModel = embeddingModel.flatMap { $0.isEmpty ? nil : $0 }
         self.apiKey = apiKey.flatMap { $0.isEmpty ? nil : $0 }
         self.extraHeaders = extraHeaders
+        self.format = format
     }
 
     public var isLoopback: Bool { Self.isLoopback(host) }

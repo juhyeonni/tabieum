@@ -56,38 +56,17 @@ public struct OpenAICompatibleProvider: AIProvider {
     }
 
     private func makeRequest(_ path: String, body: some Encodable) throws -> URLRequest {
-        guard config.isLoopback || consent.isGranted(config.host) else {
-            throw AIError.consentRequired(host: config.host)
-        }
-        var base = config.baseURL.absoluteString
-        while base.hasSuffix("/") { base.removeLast() }
-        var request = URLRequest(url: URL(string: base + "/" + path)!)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 120
-        for header in config.extraHeaders where !["content-type", "authorization"].contains(header.name.lowercased()) {
-            request.setValue(header.value, forHTTPHeaderField: header.name)
-        }
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let key = config.apiKey { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
-        request.httpBody = try JSONEncoder().encode(body)
-        return request
+        var headers: [(String, String)] = []
+        if let key = config.apiKey { headers.append(("Authorization", "Bearer \(key)")) }
+        return try AIHTTP.request(path, config: config, consent: consent, headers: headers,
+                                  reserved: ["content-type", "authorization"], body: body)
     }
 
     private func httpError(_ response: URLResponse, body: () async throws -> Data) async throws -> AIError? {
-        guard let http = response as? HTTPURLResponse else { return .badResponse }
-        if (200..<300).contains(http.statusCode) { return nil }
-        if http.statusCode == 401 || http.statusCode == 403 { return .unauthorized }
-        let message = (try? JSONDecoder().decode(ErrorBody.self, from: await body()))?.error.message
-        return .http(status: http.statusCode, message: message ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode))
+        try await AIHTTP.httpError(response, body: body)
     }
 
-    private static func map(_ error: Error) -> Error {
-        if error is AIError || error is CancellationError { return error }
-        if let error = error as? URLError {
-            return error.code == .cancelled ? CancellationError() : AIError.unreachable
-        }
-        return AIError.badResponse
-    }
+    private static func map(_ error: Error) -> Error { AIHTTP.map(error) }
 }
 
 private struct ChatBody: Encodable {
@@ -111,22 +90,10 @@ private struct Chunk: Decodable {
     let error: Failure?
 }
 
-private struct ErrorBody: Decodable {
-    struct Detail: Decodable { let message: String? }
-    let error: Detail
-}
-
 private struct EmbedResponse: Decodable {
     struct Item: Decodable {
         let index: Int
         let embedding: [Float]
     }
     let data: [Item]
-}
-
-private extension Data {
-    init(collecting bytes: URLSession.AsyncBytes) async throws {
-        self.init()
-        for try await byte in bytes { append(byte) }
-    }
 }
