@@ -93,17 +93,22 @@ public final class TextFocusTracker {
         return neighbourBounds(of: range.location)
     }
 
+    /// The previous character unless it is a line break (which belongs to the line above), else the character at the caret.
     private func neighbourBounds(of caret: Int) -> CGRect? {
-        let neighbour: NSRange
-        if caret > 0 {
-            neighbour = NSRange(location: caret - 1, length: 1)
+        guard let text = source.text.map({ $0 as NSString }) else { return nil }
+        let location: Int
+        if caret > 0, caret <= text.length, !Self.lineBreaks.contains(text.character(at: caret - 1)) {
+            location = caret - 1
+        } else if caret < text.length {
+            location = caret
         } else {
-            guard let length = source.textLength, length > 0 else { return nil }
-            neighbour = NSRange(location: 0, length: 1)
+            return nil
         }
-        guard let rect = source.bounds(for: neighbour), rect.size != .zero else { return nil }
+        guard let rect = source.bounds(for: NSRange(location: location, length: 1)), rect.size != .zero else { return nil }
         return rect
     }
+
+    private static let lineBreaks: Set<unichar> = [0x0A, 0x0D, 0x2028, 0x2029]
 
     /// Observing starts with the first subscriber and stops after the last one leaves.
     public func subscribe(_ handler: @escaping (TextFocusState) -> Void) -> Int {

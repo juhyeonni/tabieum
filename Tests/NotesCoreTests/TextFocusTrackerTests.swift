@@ -102,6 +102,39 @@ final class FakeSource: TextFocusSource {
     #expect(source.boundsQueries == [NSRange(location: 0, length: 0)])
 }
 
+@MainActor @Test func zeroSizeCaretAtLineStartUsesCharacterAtCaret() {
+    let source = FakeSource()
+    source.text = "ab\ncd"
+    source.selection = NSRange(location: 3, length: 0)
+    let atCaret = CGRect(x: 10, y: 30, width: 8, height: 18)
+    source.boundsByRange[NSRange(location: 2, length: 1)] = CGRect(x: 20, y: 10, width: 8, height: 18)
+    source.boundsByRange[NSRange(location: 3, length: 1)] = atCaret
+    #expect(TextFocusTracker(source: source).caretRect() == atCaret)
+
+    for separator in ["\r", "\u{2028}", "\u{2029}"] {
+        source.text = "ab" + separator + "cd"
+        #expect(TextFocusTracker(source: source).caretRect() == atCaret)
+    }
+}
+
+@MainActor @Test func zeroSizeCaretOnEmptyLineUsesItsOwnLineBreak() {
+    let source = FakeSource()
+    source.text = "ab\n\ncd"
+    source.selection = NSRange(location: 3, length: 0)
+    let emptyLine = CGRect(x: 10, y: 30, width: 1, height: 18)
+    source.boundsByRange[NSRange(location: 2, length: 1)] = CGRect(x: 20, y: 10, width: 1, height: 18)
+    source.boundsByRange[NSRange(location: 3, length: 1)] = emptyLine
+    #expect(TextFocusTracker(source: source).caretRect() == emptyLine)
+}
+
+@MainActor @Test func zeroSizeCaretAfterTrailingLineBreakHasNoRect() {
+    let source = FakeSource()
+    source.text = "ab\n"
+    source.selection = NSRange(location: 3, length: 0)
+    source.boundsByRange[NSRange(location: 2, length: 1)] = CGRect(x: 20, y: 10, width: 1, height: 18)
+    #expect(TextFocusTracker(source: source).caretRect() == nil)
+}
+
 @MainActor @Test func nonZeroCaretAndSelectionUseTheirOwnBounds() {
     let source = FakeSource()
     let caret = CGRect(x: 5, y: 5, width: 0, height: 18)
