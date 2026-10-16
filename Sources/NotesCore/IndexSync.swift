@@ -6,16 +6,18 @@ public protocol NoteSource {
     func noteStamps() throws -> [NoteStamp]
     func notes(ids: [String]) throws -> [Note]
     func folders() throws -> [Folder]
+    func attachmentLinkTargets(ids: [String]) throws -> [String: String]
 }
 
 extension NotesReader: NoteSource {}
 
 extension SearchIndex {
     /// Decodes and upserts only new or changed notes, and deletes notes the source no longer lists.
-    /// A body that fails to decode is indexed by title only.
+    /// A body that fails to decode is indexed by title only. `linkRefs` lists the note links in a body.
     public func sync(
         from source: NoteSource,
         decode: (Data) throws -> String = { try NoteBodyDecoder.decode($0).markdown() },
+        linkRefs: (Data) -> [NoteLinkRef] = { (try? NoteBodyDecoder.decode($0).linkRefs) ?? [] },
         log: (String) -> Void = { _ in }
     ) throws {
         let stamps = try source.noteStamps()
@@ -28,7 +30,20 @@ extension SearchIndex {
         let folderNames = Dictionary(try source.folders().map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
         for start in stride(from: 0, to: changed.count, by: 200) {
             let notes = try source.notes(ids: Array(changed[start..<min(start + 200, changed.count)]))
-            try upsert(notes.map { note in
+            let refs = notes.map { linkRefs($0.body) }
+            let attachmentIDs = refs.flatMap { $0 }.compactMap { ref -> String? in
+                if case .attachment(let id) = ref { return id }
+                return nil
+            }
+            let targets = try source.attachmentLinkTargets(ids: attachmentIDs)
+            try upsert(notes.indices.map { index in
+                let note = notes[index]
+                let links = Set(refs[index].compactMap { ref -> String? in
+                    switch ref {
+                    case .url(let url): NoteLink.uuid(from: url)
+                    case .attachment(let id): targets[id].flatMap(NoteLink.uuid(from:))
+                    }
+                })
                 let body: String
                 do {
                     body = try decode(note.body)
@@ -37,7 +52,8 @@ extension SearchIndex {
                     body = ""
                 }
                 return IndexedNote(id: note.id, title: note.title, folder: folderNames[note.folderID] ?? "",
-                                   modified: note.modified, body: body)
+                                   modified: note.modified, body: body,
+                                   links: links.subtracting([note.id.uppercased()]).sorted())
             })
         }
     }

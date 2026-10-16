@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var vim: VimController?
     private var slashCommands: SlashCommands?
     private var indexService: IndexService?
+    private var backlinksPanel: BacklinksPanel?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let name = ProductInfo.main?.name ?? ProcessInfo.processInfo.processName
@@ -25,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
         let overlayItem = menu.addItem(withTitle: "Show Caret Overlay", action: #selector(toggleCaretOverlay(_:)), keyEquivalent: "")
         overlayItem.target = self
+        menu.addItem(withTitle: "Backlinks", action: #selector(toggleBacklinks), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit \(name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
@@ -34,9 +36,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         vim = VimController(tracker: tracker, toggles: toggles)
         slashCommands = SlashCommands(tracker: tracker, toggles: toggles)
         if let bundleIdentifier = ProductInfo.main?.bundleIdentifier {
-            let service = IndexService(indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier))
+            let indexURL = SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier)
+            let service = IndexService(indexURL: indexURL)
             service.start()
             indexService = service
+            backlinksPanel = BacklinksPanel(indexURL: indexURL)
         }
 
         Task {
@@ -79,6 +83,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let closing = notification.object as? NSWindow
         let anyVisible = [onboardingWindow, settingsWindow].contains { $0 != nil && $0 !== closing && $0!.isVisible }
         status.setPolling(anyVisible)
+    }
+
+    @objc private func toggleBacklinks() {
+        backlinksPanel?.toggle()
     }
 
     @objc private func toggleCaretOverlay(_ sender: NSMenuItem) {
