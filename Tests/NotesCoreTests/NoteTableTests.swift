@@ -81,6 +81,20 @@ private func render(_ table: Data) throws -> String {
 }
 
 @Suite struct NoteTableTests {
+    // AC5
+    @Test func goldenTableRendersInTheGoldenNote() throws {
+        let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures")
+        func fixture(_ name: String) throws -> Data {
+            let hex = Array(try String(contentsOf: fixtures.appendingPathComponent(name), encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines))
+            return Data(stride(from: 0, to: hex.count, by: 2).map { UInt8(String(hex[$0...$0 + 1]), radix: 16)! })
+        }
+        let table = try fixture("golden-table-macOS26.hex")
+        let markdown = try NoteBodyDecoder.decode(try fixture("golden-macOS26.hex")).markdown(tableData: { _ in table })
+        let expected = try String(contentsOf: fixtures.appendingPathComponent("golden-table-macOS26.md"), encoding: .utf8)
+        #expect(markdown == expected)
+    }
+
     // AC1
     @Test func rendersThreeByThreeInOrderingOrder() throws {
         let cells = (0..<3).map { row in (0..<3).map { Encode.cell("r\(row)c\($0)") as [UInt8]? } }
