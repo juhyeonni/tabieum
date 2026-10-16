@@ -22,6 +22,21 @@ public enum CurrentNote {
         return key
     }
 
+    public struct Match: Equatable, Sendable {
+        public let key: Int
+        public let ambiguous: Bool
+    }
+
+    /// The one selected note, else the note whose title is the front window's; `keysForTitle` returns the newest first.
+    public static func resolve(selection ids: [String], windowTitle: String?,
+                               keysForTitle: (String) throws -> [Int]) throws -> Match {
+        if ids.count == 1 { return Match(key: try key(fromSelection: ids), ambiguous: false) }
+        guard ids.isEmpty, let windowTitle else { throw CopyFailure.noCurrentNote }
+        let keys = try keysForTitle(windowTitle)
+        guard let newest = keys.first else { throw CopyFailure.noCurrentNote }
+        return Match(key: newest, ambiguous: keys.count > 1)
+    }
+
     /// -1743 is "not authorized to send Apple events"; every other script error means no note could be read.
     public static func failure(scriptErrorNumber: Int) -> CopyFailure {
         scriptErrorNumber == -1743 ? .automationDenied : .noCurrentNote

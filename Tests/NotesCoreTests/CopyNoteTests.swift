@@ -48,4 +48,26 @@ import Testing
         #expect(CurrentNote.failure(scriptErrorNumber: -1743) == .automationDenied)
         #expect(CurrentNote.failure(scriptErrorNumber: -600) == .noCurrentNote)
     }
+
+    @Test func openNoteFallsBackToTheWindowTitle() throws {
+        let never: (String) throws -> [Int] = { _ in Issue.record("title consulted"); return [] }
+        let one = try CurrentNote.resolve(selection: ["x-coredata://ABC/ICNote/p42"], windowTitle: "T", keysForTitle: never)
+        #expect(one == CurrentNote.Match(key: 42, ambiguous: false))
+
+        let single = try CurrentNote.resolve(selection: [], windowTitle: "T") { _ in [7] }
+        #expect(single == CurrentNote.Match(key: 7, ambiguous: false))
+        let shared = try CurrentNote.resolve(selection: [], windowTitle: "T") { _ in [9, 3] }
+        #expect(shared == CurrentNote.Match(key: 9, ambiguous: true))
+
+        #expect(throws: CopyFailure.noCurrentNote) { try CurrentNote.resolve(selection: [], windowTitle: "T") { _ in [] } }
+        #expect(throws: CopyFailure.noCurrentNote) { try CurrentNote.resolve(selection: [], windowTitle: nil, keysForTitle: never) }
+    }
+
+    @Test func noteKeysByTitleNewestFirst() throws {
+        let lib = try library()
+        try lib.note(pk: 101, id: "N-101", title: "Title", folder: 10, created: 1, modified: 5, snippet: nil, body: Self.body)
+        let reader = try NotesReader(databaseURL: lib.url)
+        #expect(try reader.noteKeys(title: "Title") == [101, 100])
+        #expect(try reader.noteKeys(title: "O'Nope").isEmpty)
+    }
 }

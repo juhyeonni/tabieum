@@ -185,6 +185,18 @@ public final class NotesReader {
         }.first
     }
 
+    /// Database keys of the live notes titled `title`, most recently modified first.
+    public func noteKeys(title: String) throws -> [Int] {
+        let column = try mostUsed(titleColumns, entity: noteEntity)
+        let modified = try mostUsed(modificationColumns, entity: noteEntity)
+        let quoted = title.replacingOccurrences(of: "'", with: "''")
+        return try query("""
+            SELECT Z_PK FROM \(Self.objects)
+            WHERE Z_ENT = \(noteEntity) AND \(column) = '\(quoted)' AND coalesce(ZMARKEDFORDELETION, 0) = 0
+            ORDER BY \(modified) DESC, Z_PK DESC
+            """) { Int(sqlite3_column_int64($0, 0)) }
+    }
+
     public func noteStamps() throws -> [NoteStamp] {
         let modified = try mostUsed(modificationColumns, entity: noteEntity)
         return try query("""
