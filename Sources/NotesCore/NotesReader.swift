@@ -53,6 +53,8 @@ public final class NotesReader {
     private let creationColumns: [String]
     private let modificationColumns: [String]
     private let accountLinkColumns: [String]
+    private let mergeableColumns: [String]
+    private let typeColumns: [String]
 
     public init(databaseURL: URL = NotesReader.defaultDatabaseURL) throws {
         let path = databaseURL.path
@@ -75,6 +77,8 @@ public final class NotesReader {
             titleColumns = family("ZTITLE")
             creationColumns = family("ZCREATIONDATE")
             modificationColumns = family("ZMODIFICATIONDATE")
+            mergeableColumns = family("ZMERGEABLEDATA")
+            typeColumns = family("ZTYPEUTI")
             accountLinkColumns = (columns.contains("ZOWNER") ? ["ZOWNER"] : [])
                 + columns.filter { $0.hasPrefix("ZACCOUNT") && Int($0.dropFirst(8)) != nil }
                     .sorted { Int($0.dropFirst(8))! < Int($1.dropFirst(8))! }
@@ -151,6 +155,21 @@ public final class NotesReader {
                  modified: Date(timeIntervalSinceReferenceDate: sqlite3_column_double($0, 4)),
                  snippet: Self.text($0, 5), body: Self.blob($0, 6))
         }
+    }
+
+    /// The gzip-compressed mergeable data of the table attachment with this identifier, or nil if there is none.
+    public func tableData(attachmentID: String) throws -> Data? {
+        guard !mergeableColumns.isEmpty, !typeColumns.isEmpty else { return nil }
+        let id = attachmentID.replacingOccurrences(of: "'", with: "''")
+        let data = try query("""
+            SELECT coalesce(\((mergeableColumns + ["NULL"]).joined(separator: ", ")))
+            FROM \(Self.objects)
+            WHERE ZIDENTIFIER = '\(id)'
+              AND coalesce(\((typeColumns + ["NULL"]).joined(separator: ", "))) = '\(NoteBodyDecoder.tableUTI)'
+              AND coalesce(ZMARKEDFORDELETION, 0) = 0
+            LIMIT 1
+            """) { Self.blob($0, 0) }.first
+        return data?.isEmpty == false ? data : nil
     }
 
     private func visibleFolder(_ alias: String) -> String {
