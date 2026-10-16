@@ -1,0 +1,73 @@
+import AppKit
+import ApplicationServices
+import NotesCore
+import os
+
+/// Keystrokes and Format menu presses sent to Apple Notes.
+@MainActor
+enum NotesControl {
+    static var pid: pid_t? {
+        NSRunningApplication.runningApplications(withBundleIdentifier: TextFocusTracker.notesBundleID).first?.processIdentifier
+    }
+
+    static func postDelete(to pid: pid_t) { postKey(51, flags: [], to: pid) }
+
+    static func postPaste(to pid: pid_t) { postKey(9, flags: .maskCommand, to: pid) }
+
+    private static func postKey(_ key: CGKeyCode, flags: CGEventFlags, to pid: pid_t) {
+        let source = CGEventSource(stateID: .hidSystemState)
+        for keyDown in [true, false] {
+            let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: keyDown)
+            event?.flags = flags
+            event?.postToPid(pid)
+        }
+    }
+
+    private static var loggedMissing: Set<NotesStyle> = []
+    private static let log = Logger(subsystem: "NotesExtension", category: "notes")
+
+    /// Deletes `range` and presses the style's Format menu item.
+    static func apply(_ style: NotesStyle, replacing range: NSRange, tracker: TextFocusTracker) {
+        guard let pid else { return }
+        guard let item = menuItem(for: style, pid: pid) else {
+            if loggedMissing.insert(style).inserted {
+                log.notice("No Notes menu item for \(style.displayName, privacy: .public); its shortcut may be rebound")
+            }
+            return
+        }
+        tracker.setSelectedRange(range)
+        postDelete(to: pid)
+        AXUIElementPerformAction(item, kAXPressAction as CFString)
+    }
+
+    private static func menuItem(for style: NotesStyle, pid: pid_t) -> AXUIElement? {
+        guard let bar = element(AXUIElementCreateApplication(pid), kAXMenuBarAttribute) else { return nil }
+        let (char, modifiers) = style.keyEquivalent
+        return find(in: bar, depth: 4) { item in
+            guard let cmdChar: String = value(item, kAXMenuItemCmdCharAttribute),
+                  cmdChar.caseInsensitiveCompare(char) == .orderedSame else { return false }
+            return (value(item, kAXMenuItemCmdModifiersAttribute) as Int? ?? 0) == modifiers
+        }
+    }
+
+    /// Depth 4 reaches menu bar item → menu → item → submenu → item.
+    private static func find(in element: AXUIElement, depth: Int, where matches: (AXUIElement) -> Bool) -> AXUIElement? {
+        guard depth >= 0, let children: [AXUIElement] = value(element, kAXChildrenAttribute) else { return nil }
+        for child in children {
+            if matches(child) { return child }
+            if let found = find(in: child, depth: depth - 1, where: matches) { return found }
+        }
+        return nil
+    }
+
+    private static func element(_ element: AXUIElement, _ attribute: String) -> AXUIElement? {
+        guard let result: CFTypeRef = value(element, attribute), CFGetTypeID(result) == AXUIElementGetTypeID() else { return nil }
+        return (result as! AXUIElement)
+    }
+
+    private static func value<T>(_ element: AXUIElement, _ attribute: String) -> T? {
+        var result: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &result) == .success else { return nil }
+        return result as? T
+    }
+}
