@@ -28,6 +28,12 @@ public struct Note: Equatable, Sendable {
     public let body: Data
 }
 
+public struct KeyedNote: Equatable, Sendable {
+    public let note: Note
+    public let accountID: String
+    public let locked: Bool
+}
+
 public enum NotesReaderError: Error, Equatable {
     case cannotOpen(path: String, message: String)
     case permissionDenied(path: String)
@@ -149,6 +155,30 @@ public final class NotesReader {
         guard !ids.isEmpty else { return [] }
         let list = ids.map { "'" + $0.replacingOccurrences(of: "'", with: "''") + "'" }.joined(separator: ", ")
         return try readNotes(where: "AND n.ZIDENTIFIER IN (\(list))")
+    }
+
+    /// One note by its database key (Z_PK), locked or not; nil when no live note has that key.
+    public func note(key: Int) throws -> KeyedNote? {
+        let title = try mostUsed(titleColumns, entity: noteEntity)
+        let created = try mostUsed(creationColumns, entity: noteEntity)
+        let modified = try mostUsed(modificationColumns, entity: noteEntity)
+        let link = try accountLink()
+        return try query("""
+            SELECT n.ZIDENTIFIER, n.\(title), f.ZIDENTIFIER, n.\(created), n.\(modified), n.ZSNIPPET, d.ZDATA,
+                   a.ZIDENTIFIER, coalesce(n.ZISPASSWORDPROTECTED, 0)
+            FROM \(Self.objects) n
+            JOIN \(Self.objects) f ON f.Z_PK = n.ZFOLDER AND f.Z_ENT = \(folderEntity)
+            JOIN \(Self.objects) a ON a.Z_PK = f.\(link) AND a.Z_ENT = \(accountEntity)
+            LEFT JOIN ZICNOTEDATA d ON d.Z_PK = n.ZNOTEDATA
+            WHERE n.Z_ENT = \(noteEntity) AND n.Z_PK = \(key) AND coalesce(n.ZMARKEDFORDELETION, 0) = 0
+            """) {
+            KeyedNote(
+                note: Note(id: Self.text($0, 0) ?? "", title: Self.text($0, 1) ?? "", folderID: Self.text($0, 2) ?? "",
+                           created: Date(timeIntervalSinceReferenceDate: sqlite3_column_double($0, 3)),
+                           modified: Date(timeIntervalSinceReferenceDate: sqlite3_column_double($0, 4)),
+                           snippet: Self.text($0, 5), body: Self.blob($0, 6)),
+                accountID: Self.text($0, 7) ?? "", locked: sqlite3_column_int64($0, 8) != 0)
+        }.first
     }
 
     public func noteStamps() throws -> [NoteStamp] {

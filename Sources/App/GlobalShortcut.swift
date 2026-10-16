@@ -9,13 +9,19 @@ final class CarbonHotKey {
     private var ref: EventHotKeyRef?
     private var handler: EventHandlerRef?
     private let onPress: () -> Void
+    private let id: UInt32
 
-    init(onPress: @escaping () -> Void) {
+    init(id: UInt32, onPress: @escaping () -> Void) {
+        self.id = id
         self.onPress = onPress
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, userData in
-            guard let userData else { return noErr }
+        InstallEventHandler(GetApplicationEventTarget(), { event, _, userData in
+            guard let userData, let event else { return noErr }
+            var pressed = EventHotKeyID()
+            GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil,
+                              MemoryLayout<EventHotKeyID>.size, nil, &pressed)
             let hotKey = Unmanaged<CarbonHotKey>.fromOpaque(userData).takeUnretainedValue()
+            guard pressed.id == hotKey.id else { return OSStatus(eventNotHandledErr) }
             Task { @MainActor in hotKey.onPress() }
             return noErr
         }, 1, &spec, Unmanaged.passUnretained(self).toOpaque(), &handler)
@@ -23,8 +29,8 @@ final class CarbonHotKey {
 
     func register(_ shortcut: Shortcut) -> Bool {
         unregister()
-        let id = EventHotKeyID(signature: OSType(0x4E58_4B59), id: 1)
-        return RegisterEventHotKey(shortcut.keyCode, shortcut.modifiers.rawValue, id, GetApplicationEventTarget(), 0, &ref) == noErr
+        let hotKeyID = EventHotKeyID(signature: OSType(0x4E58_4B59), id: id)
+        return RegisterEventHotKey(shortcut.keyCode, shortcut.modifiers.rawValue, hotKeyID, GetApplicationEventTarget(), 0, &ref) == noErr
     }
 
     func unregister() {
@@ -33,18 +39,23 @@ final class CarbonHotKey {
     }
 }
 
-/// Owns the search shortcut: registers it, saves it, and reports a registration failure.
+/// Owns one global shortcut: registers it, saves it, and reports a registration failure.
 @MainActor
 final class ShortcutController: ObservableObject {
     @Published private(set) var shortcut: Shortcut
     @Published private(set) var error: String?
+    let title: String
     private let toggles: FeatureToggles
+    private let keyPath: ReferenceWritableKeyPath<FeatureToggles, Shortcut>
     private let hotKey: CarbonHotKey
 
-    init(toggles: FeatureToggles, onPress: @escaping () -> Void) {
+    init(toggles: FeatureToggles, title: String, id: UInt32, keyPath: ReferenceWritableKeyPath<FeatureToggles, Shortcut>,
+         onPress: @escaping () -> Void) {
         self.toggles = toggles
-        shortcut = toggles.searchShortcut
-        hotKey = CarbonHotKey(onPress: onPress)
+        self.title = title
+        self.keyPath = keyPath
+        shortcut = toggles[keyPath: keyPath]
+        hotKey = CarbonHotKey(id: id, onPress: onPress)
         error = hotKey.register(shortcut) ? nil : Self.takenMessage
     }
 
@@ -56,7 +67,7 @@ final class ShortcutController: ObservableObject {
             return
         }
         if hotKey.register(new) {
-            toggles.searchShortcut = new
+            toggles[keyPath: keyPath] = new
             shortcut = new
             error = nil
         } else {
@@ -73,7 +84,7 @@ struct ShortcutRecorder: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("Search shortcut")
+                Text(controller.title)
                 Button(monitor == nil ? controller.shortcut.display : "Type a shortcut…", action: toggleRecording)
             }
             if let error = controller.error { Text(error).font(.callout).foregroundStyle(.red) }

@@ -64,7 +64,7 @@ extension NoteDocument {
 }
 
 /// The database key at the end of a Core Data ID such as `x-coredata://<store>/ICNote/p123`.
-public enum CurrentNote {
+extension CurrentNote {
     public static func key(coreDataID: String) -> Int? {
         let prefix = "x-coredata://"
         guard coreDataID.hasPrefix(prefix) else { return nil }

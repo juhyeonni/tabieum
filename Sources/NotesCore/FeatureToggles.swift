@@ -28,17 +28,31 @@ public final class FeatureToggles: ObservableObject {
 
     /// The global shortcut that opens the search panel.
     public var searchShortcut: Shortcut {
-        get {
-            guard let code = defaults.object(forKey: "searchShortcut.keyCode") as? Int,
-                  let flags = defaults.object(forKey: "searchShortcut.modifiers") as? Int
-            else { return .default }
-            let shortcut = Shortcut(keyCode: UInt32(code), modifiers: .init(rawValue: UInt32(flags)))
-            return shortcut.isValid ? shortcut : .default
-        }
-        set {
-            defaults.set(Int(newValue.keyCode), forKey: "searchShortcut.keyCode")
-            defaults.set(Int(newValue.modifiers.rawValue), forKey: "searchShortcut.modifiers")
-        }
+        get { shortcut("searchShortcut", fallback: .default) }
+        set { setShortcut("searchShortcut", newValue) }
+    }
+
+    public var copyMarkdownShortcut: Shortcut {
+        get { shortcut("copyMarkdownShortcut", fallback: .copyMarkdown) }
+        set { setShortcut("copyMarkdownShortcut", newValue) }
+    }
+
+    public var copyLinkShortcut: Shortcut {
+        get { shortcut("copyLinkShortcut", fallback: .copyLink) }
+        set { setShortcut("copyLinkShortcut", newValue) }
+    }
+
+    private func shortcut(_ name: String, fallback: Shortcut) -> Shortcut {
+        guard let code = defaults.object(forKey: "\(name).keyCode") as? Int,
+              let flags = defaults.object(forKey: "\(name).modifiers") as? Int
+        else { return fallback }
+        let shortcut = Shortcut(keyCode: UInt32(code), modifiers: .init(rawValue: UInt32(flags)))
+        return shortcut.isValid ? shortcut : fallback
+    }
+
+    private func setShortcut(_ name: String, _ value: Shortcut) {
+        defaults.set(Int(value.keyCode), forKey: "\(name).keyCode")
+        defaults.set(Int(value.modifiers.rawValue), forKey: "\(name).modifiers")
     }
 
     public init(defaults: UserDefaults = .standard) {
