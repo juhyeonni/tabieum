@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var indexService: IndexService?
     private var searchPanel: SearchPanel?
     private lazy var searchShortcut = ShortcutController(toggles: toggles) { [weak self] in self?.searchPanel?.show() }
+    private var aiAssistant: AIAssistant?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let name = ProductInfo.main?.name ?? ProcessInfo.processInfo.processName
@@ -34,7 +35,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ai.config = AISettings.savedConfig()
         markdownShortcuts = MarkdownShortcuts(tracker: tracker, toggles: toggles)
         vim = VimController(tracker: tracker, toggles: toggles)
-        slashCommands = SlashCommands(tracker: tracker, toggles: toggles)
+        let slash = SlashCommands(tracker: tracker, toggles: toggles)
+        slashCommands = slash
+        aiAssistant = AIAssistant(tracker: tracker, toggles: toggles, feature: ai, registry: slash.registry)
+        vim?.claimsKey = { [weak self] in self?.slashCommands?.claims(keyCode: $0) ?? false }
         if let bundleIdentifier = ProductInfo.main?.bundleIdentifier {
             let service = IndexService(indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier))
             service.start()

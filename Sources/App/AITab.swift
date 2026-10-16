@@ -42,6 +42,8 @@ struct AITab: View {
     @State private var result = ""
     @State private var testing = false
     @State private var consentHost: String?
+    @State private var recording = false
+    @State private var shortcutRejected = false
     private let consent = HostConsent()
 
     private var host: String? { AIConfig(baseURL: baseURL, chatModel: "-")?.host }
@@ -51,6 +53,11 @@ struct AITab: View {
             Toggle("Enable AI", isOn: $toggles.aiEnabled)
             Text("Uses an OpenAI-compatible server such as Ollama or LM Studio. While off, nothing is sent.")
                 .font(.callout).foregroundStyle(.secondary)
+            HStack {
+                Text("Shortcut")
+                Button(recording ? "Press keys…" : toggles.aiShortcut.label, action: record)
+                if shortcutRejected { Text("Include ⌘ or ⌃.").font(.caption).foregroundStyle(.red) }
+            }
             TextField("Base URL", text: $baseURL, prompt: Text("http://localhost:11434/v1"))
             if !baseURL.isEmpty && host == nil {
                 Text("Use https, or http to localhost.").font(.caption).foregroundStyle(.red)
@@ -99,6 +106,23 @@ struct AITab: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Note text will be sent to \(consentHost ?? ""). You can revoke this here later.")
+        }
+    }
+
+    private func record() {
+        guard !recording else { return }
+        recording = true
+        shortcutRejected = false
+        var monitor: Any?
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            recording = false
+            guard event.keyCode != 53 else { return nil }
+            let flags = CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue)).intersection(HotKey.relevant)
+            let name = (event.charactersIgnoringModifiers ?? "").uppercased()
+            let key = HotKey(keyCode: event.keyCode, modifiers: flags, key: name.isEmpty ? "Key \(event.keyCode)" : name)
+            if key.isValid { toggles.aiShortcut = key } else { shortcutRejected = true }
+            return nil
         }
     }
 

@@ -5,7 +5,7 @@ import SwiftUI
 
 /// Registers one global shortcut with Carbon `RegisterEventHotKey`: it needs no permission and consumes the key.
 @MainActor
-final class HotKey {
+final class CarbonHotKey {
     private var ref: EventHotKeyRef?
     private var handler: EventHandlerRef?
     private let onPress: () -> Void
@@ -15,7 +15,7 @@ final class HotKey {
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         InstallEventHandler(GetApplicationEventTarget(), { _, _, userData in
             guard let userData else { return noErr }
-            let hotKey = Unmanaged<HotKey>.fromOpaque(userData).takeUnretainedValue()
+            let hotKey = Unmanaged<CarbonHotKey>.fromOpaque(userData).takeUnretainedValue()
             Task { @MainActor in hotKey.onPress() }
             return noErr
         }, 1, &spec, Unmanaged.passUnretained(self).toOpaque(), &handler)
@@ -39,12 +39,12 @@ final class ShortcutController: ObservableObject {
     @Published private(set) var shortcut: Shortcut
     @Published private(set) var error: String?
     private let toggles: FeatureToggles
-    private let hotKey: HotKey
+    private let hotKey: CarbonHotKey
 
     init(toggles: FeatureToggles, onPress: @escaping () -> Void) {
         self.toggles = toggles
         shortcut = toggles.searchShortcut
-        hotKey = HotKey(onPress: onPress)
+        hotKey = CarbonHotKey(onPress: onPress)
         error = hotKey.register(shortcut) ? nil : Self.takenMessage
     }
 
