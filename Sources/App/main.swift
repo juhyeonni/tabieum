@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
         let overlayItem = menu.addItem(withTitle: "Show Caret Overlay", action: #selector(toggleCaretOverlay(_:)), keyEquivalent: "")
         overlayItem.target = self
+        menu.addItem(withTitle: "Show Vim Latency", action: #selector(toggleVimLatency(_:)), keyEquivalent: "").target = self
         embeddingItem.isEnabled = false
         embeddingItem.isHidden = true
         menu.addItem(embeddingItem)
@@ -144,6 +145,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let closing = notification.object as? NSWindow
         let anyVisible = [onboardingWindow, settingsWindow].contains { $0 != nil && $0 !== closing && $0!.isVisible }
         status.setPolling(anyVisible)
+    }
+
+    @objc private func toggleVimLatency(_ sender: NSMenuItem) {
+        guard let vim else { return }
+        vim.showsLatency.toggle()
+        sender.state = vim.showsLatency ? .on : .off
     }
 
     @objc private func toggleCaretOverlay(_ sender: NSMenuItem) {

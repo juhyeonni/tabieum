@@ -35,7 +35,7 @@ final class CaretOverlay {
             window.orderOut(nil)
             return
         }
-        subscription = tracker.subscribe { [weak self] in self?.show($0) }
+        subscription = tracker.subscribe(needsCaretRect: true) { [weak self] in self?.show($0) }
     }
 
     private func show(_ state: TextFocusState) {
