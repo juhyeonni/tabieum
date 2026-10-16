@@ -111,7 +111,7 @@ final class VimController {
         if event.tag == Self.eventTag { return true }
         let keyCode = event.keyCode
         if type == .keyUp { return swallowed.remove(keyCode) == nil }
-        guard active else { return true }
+        guard active, NSApp.keyWindow == nil else { return true }
         let flags = event.flags
         guard let key = vimKey(
             keyCode: Int(keyCode), shift: flags.contains(.maskShift), control: flags.contains(.maskControl),
