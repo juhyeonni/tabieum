@@ -51,7 +51,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         vim = VimController(tracker: tracker, toggles: toggles)
         let slash = SlashCommands(tracker: tracker, toggles: toggles)
         slashCommands = slash
-        aiAssistant = AIAssistant(tracker: tracker, toggles: toggles, feature: ai, registry: slash.registry)
+        aiAssistant = AIAssistant(
+            tracker: tracker, toggles: toggles, feature: ai,
+            indexURL: ProductInfo.main.map { SearchIndex.defaultURL(bundleIdentifier: $0.bundleIdentifier) }, registry: slash.registry)
         vim?.claimsKey = { [weak self] in self?.slashCommands?.claims(keyCode: $0) ?? false }
         if let bundleIdentifier = ProductInfo.main?.bundleIdentifier {
             let indexURL = SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier)
