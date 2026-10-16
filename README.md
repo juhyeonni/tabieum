@@ -19,6 +19,8 @@ open build/NoteKit.app
 
 The app runs as a menu-bar item with no Dock icon.
 
+Each ad-hoc build has a new signature, so macOS asks again for Keychain access to the AI API key. To stop that, create a self-signed code-signing certificate once (Keychain Access > Certificate Assistant > Create a Certificate, type Code Signing) and build with `NOTEKIT_SIGN_IDENTITY="<certificate name>" scripts/bundle.sh`; then "Always Allow" survives rebuilds.
+
 ## Notes
 
 - **Search index:** the app keeps a full-text index of your unlocked notes in `~/Library/Application Support/<bundle id>/index.sqlite`. It holds a plain-text copy of each note's title, folder and Markdown body, outside the Notes container, so any process running as you can read it. Locked notes are never indexed. It is a cache: delete the file and it is rebuilt. Syncing needs Full Disk Access; without it the app keeps running and logs why it cannot sync.
