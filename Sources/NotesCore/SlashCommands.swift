@@ -11,6 +11,20 @@ public func slashTrigger(previous: TextSnapshot, current: TextSnapshot) -> NSRan
     return NSRange(location: offset, length: 1)
 }
 
+/// The text typed after the `/` at `offset`, up to the caret; nil when the menu should close.
+public func slashQuery(text: String, slashOffset offset: Int, caret: Int) -> String? {
+    let utf16 = Array(text.utf16)
+    guard offset >= 0, offset < utf16.count, utf16[offset] == UInt16(UInt8(ascii: "/")),
+          caret > offset, caret <= utf16.count
+    else { return nil }
+    let query = String(decoding: utf16[(offset + 1)..<caret], as: UTF16.self)
+    return query.contains(where: \.isWhitespace) ? nil : query
+}
+
+public enum SlashSection: String, CaseIterable, Sendable {
+    case templates = "Templates", styles = "Styles", commands = "Commands"
+}
+
 public struct SlashItem: Equatable, Sendable {
     public enum Action: Equatable, Sendable {
         /// A Notes note id.
@@ -26,6 +40,20 @@ public struct SlashItem: Equatable, Sendable {
     public init(title: String, action: Action) {
         self.title = title
         self.action = action
+    }
+
+    public var section: SlashSection {
+        switch action {
+        case .template: .templates
+        case .style: .styles
+        case .command: .commands
+        }
+    }
+
+    /// A style's Notes keyboard shortcut; templates and commands have none.
+    public var shortcut: String? {
+        guard case let .style(style) = action else { return nil }
+        return style.shortcut
     }
 
     public static let builtIns = NotesStyle.allCases.map { SlashItem(title: $0.displayName, action: .style($0)) }
@@ -47,6 +75,19 @@ public func filterSlashItems(_ items: [SlashItem], query: String) -> [SlashItem]
         }
     }
     return prefixed + contained
+}
+
+/// Items grouped Templates, Styles, Commands, each keeping its order; empty sections are left out.
+public func groupSlashItems(_ items: [SlashItem]) -> [(section: SlashSection, items: [SlashItem])] {
+    SlashSection.allCases.compactMap { section in
+        let group = items.filter { $0.section == section }
+        return group.isEmpty ? nil : (section, group)
+    }
+}
+
+/// The menu stays open for the empty query and for any query that matches an item.
+public func slashMenuStaysOpen(_ items: [SlashItem], query: String) -> Bool {
+    !filterSlashItems(items, query: query).isEmpty
 }
 
 /// Commands other features add to the `/` panel, each listed only while its condition holds.
