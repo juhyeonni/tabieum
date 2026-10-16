@@ -9,11 +9,13 @@ public struct MCPServer: Sendable {
     enum Tool: String, CaseIterable {
         case searchNotes = "search_notes"
         case getNote = "get_note"
+        case listBacklinks = "list_backlinks"
 
         var description: String {
             switch self {
             case .searchNotes: "Search the user's notes. Returns the best matches with a snippet."
             case .getNote: "Read one note as Markdown by its id."
+            case .listBacklinks: "List the notes that link to one note, by its id."
             }
         }
 
@@ -23,7 +25,7 @@ public struct MCPServer: Sendable {
                 ["type": "object", "required": ["query"], "properties": [
                     "query": ["type": "string"],
                     "k": ["type": "integer", "minimum": 1, "maximum": 50, "default": 10]]]
-            case .getNote:
+            case .getNote, .listBacklinks:
                 ["type": "object", "required": ["id"], "properties": ["id": ["type": "string"]]]
             }
         }
@@ -105,6 +107,7 @@ public struct MCPServer: Sendable {
             switch tool {
             case .searchNotes: output = try search(index, arguments)
             case .getNote: output = try getNote(index, arguments)
+            case .listBacklinks: output = try listBacklinks(index, arguments)
             }
             return content(output, isError: false)
         } catch let failure as ToolFailure {
@@ -145,6 +148,13 @@ public struct MCPServer: Sendable {
         fields["markdown"] = markdown
         fields["snippet"] = nil
         return fields
+    }
+
+    private func listBacklinks(_ index: SearchIndex, _ arguments: [String: Any]) throws -> [[String: Any]] {
+        guard let id = arguments["id"] as? String, try index.note(id) != nil else {
+            throw ToolFailure(message: "No note with that id.")
+        }
+        return try index.backlinks(to: id).map { ["id": $0.id, "title": $0.title, "folder": $0.folder] }
     }
 
     private static func fields(_ note: SearchResult) -> [String: Any] {

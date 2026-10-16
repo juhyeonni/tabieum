@@ -68,7 +68,7 @@ private func errorCode(_ message: [String: Any]) -> Int? {
     @Test func toolsListHasInputSchemas() throws {
         let message = try reply(server(tempURL()), #"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#)
         let tools = try #require((message["result"] as? [String: Any])?["tools"] as? [[String: Any]])
-        #expect(tools.compactMap { $0["name"] as? String } == ["search_notes", "get_note"])
+        #expect(tools.compactMap { $0["name"] as? String } == ["search_notes", "get_note", "list_backlinks"])
         #expect(tools.allSatisfy { $0["inputSchema"] != nil })
     }
 
@@ -99,6 +99,23 @@ private func errorCode(_ message: [String: Any]) -> Int? {
         let note = try #require(JSONSerialization.jsonObject(with: Data(found.text.utf8)) as? [String: Any])
         #expect(!found.isError && note["markdown"] as? String == "my automobile" && note["title"] as? String == "Garage")
         #expect(try callTool(s, "get_note", #"{"id":"nope"}"#).isError)
+    }
+
+    @Test func listBacklinksReturnsLinkingNotesOrError() throws {
+        let url = tempURL()
+        let index = try SearchIndex(url: url)
+        let modified = Date(timeIntervalSinceReferenceDate: 100)
+        try index.upsert([
+            IndexedNote(id: "A", title: "Target", folder: "Work", modified: modified, body: "t", owner: ""),
+            IndexedNote(id: "B", title: "Source", folder: "Home", modified: modified, body: "s", owner: "", links: ["A"]),
+        ])
+        let s = server(url)
+        let found = try callTool(s, "list_backlinks", #"{"id":"A"}"#)
+        let rows = try hits(found.text)
+        #expect(!found.isError && rows.count == 1)
+        #expect(rows[0]["id"] as? String == "B" && rows[0]["title"] as? String == "Source" && rows[0]["folder"] as? String == "Home")
+        #expect(try hits(callTool(s, "list_backlinks", #"{"id":"B"}"#).text).isEmpty)
+        #expect(try callTool(s, "list_backlinks", #"{"id":"nope"}"#).isError)
     }
 
     @Test func protocolErrorsAndNotifications() throws {
