@@ -37,7 +37,6 @@ final class SlashCommands {
         let templates = templates(in: folder)
         let message: String? = switch templates {
         case nil: "Can't read templates from Notes. Check Automation in Settings."
-        case let list? where list.isEmpty: "No templates: the folder “\(folder)” is missing or empty."
         default: nil
         }
         slashOffset = range.location
