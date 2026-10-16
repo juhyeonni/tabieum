@@ -8,7 +8,7 @@ final class FakeSource: TextFocusSource {
     var isTrusted = true
     var frontmostBundleID: String? = TextFocusTracker.notesBundleID
     var focusedRole: String? = TextFocusTracker.editorRole
-    var text = "hello"
+    var text: String? = "hello"
     var selection = NSRange(location: 0, length: 0)
     var boundsByRange: [NSRange: CGRect] = [:]
     var boundsQueries: [NSRange] = []
@@ -17,7 +17,7 @@ final class FakeSource: TextFocusSource {
     var stopCount = 0
     var onChange: (() -> Void)?
 
-    var textLength: Int? { text.utf16.count }
+    var textLength: Int? { text?.utf16.count }
     func selectedRange() -> NSRange? { selection }
     func setSelectedRange(_ range: NSRange) { setRanges.append(range) }
     func bounds(for range: NSRange) -> CGRect? {

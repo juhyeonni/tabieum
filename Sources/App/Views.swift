@@ -87,6 +87,12 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 16) {
                 PermissionRows(status: status)
                 Button("Show Permissions Onboarding…", action: showOnboarding)
+                Divider()
+                Text("Markdown shortcuts").bold()
+                ForEach(MarkdownStyle.allCases, id: \.self) { style in
+                    Toggle("\(style.marker.trimmingCharacters(in: .whitespacesAndNewlines))  \(style.displayName)",
+                           isOn: markdownBinding(style))
+                }
             }
             .padding()
             .tabItem { Label("General", systemImage: "gearshape") }
@@ -101,6 +107,15 @@ struct SettingsView: View {
         }
         .frame(width: 520)
         .padding()
+    }
+
+    private func markdownBinding(_ style: MarkdownStyle) -> Binding<Bool> {
+        Binding(
+            get: { toggles.markdownStyles.contains(style) },
+            set: { isOn in
+                if isOn { toggles.markdownStyles.insert(style) } else { toggles.markdownStyles.remove(style) }
+            }
+        )
     }
 
     private func featureTab(_ isOn: Binding<Bool>, title: String, detail: String) -> some View {

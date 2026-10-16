@@ -13,6 +13,7 @@ public protocol TextFocusSource: AnyObject {
     var frontmostBundleID: String? { get }
     var focusedRole: String? { get }
     var textLength: Int? { get }
+    var text: String? { get }
     func selectedRange() -> NSRange?
     func setSelectedRange(_ range: NSRange)
     func bounds(for range: NSRange) -> CGRect?
@@ -61,6 +62,12 @@ public final class TextFocusTracker {
 
     public func selectedRange() -> NSRange? {
         isFocused ? source.selectedRange() : nil
+    }
+
+    /// The note text and caret, or nil without a focused note body or with a non-empty selection.
+    public func snapshot() -> TextSnapshot? {
+        guard isFocused, let text = source.text, let range = source.selectedRange(), range.length == 0 else { return nil }
+        return TextSnapshot(text: text, caret: range.location)
     }
 
     public func setSelectedRange(_ range: NSRange) {

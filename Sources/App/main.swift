@@ -10,7 +10,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private lazy var ai = AIFeature(toggles: toggles, factory: AISettings.makeProvider)
     private var onboardingWindow: NSWindow?
     private var settingsWindow: NSWindow?
-    private let caretOverlay = CaretOverlay(tracker: TextFocusTracker(source: AXTextFocusSource()))
+    private let tracker = TextFocusTracker(source: AXTextFocusSource())
+    private lazy var caretOverlay = CaretOverlay(tracker: tracker)
+    private var markdownShortcuts: MarkdownShortcuts?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let name = ProductInfo.main?.name ?? ProcessInfo.processInfo.processName
@@ -25,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         item.menu = menu
         statusItem = item
         ai.config = AISettings.savedConfig()
+        markdownShortcuts = MarkdownShortcuts(tracker: tracker, toggles: toggles)
 
         Task {
             await status.refresh()
