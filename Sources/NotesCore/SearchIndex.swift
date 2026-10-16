@@ -19,14 +19,14 @@ struct IndexedNote {
 
 /// A full-text index of readable notes in one SQLite file. It is a cache: everything in it can be rebuilt from Notes.
 public final class SearchIndex: @unchecked Sendable {
-    static let schemaVersion = 1
+    static let schemaVersion = 2
 
     public static func defaultURL(bundleIdentifier: String) -> URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/\(bundleIdentifier)/index.sqlite")
     }
 
-    private let db: SQLiteConnection
+    let db: SQLiteConnection
 
     public init(url: URL, readOnly: Bool = false) throws {
         if readOnly {
@@ -51,6 +51,12 @@ public final class SearchIndex: @unchecked Sendable {
             CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
                 title, body, folder UNINDEXED, tokenize = 'unicode61 remove_diacritics 2', prefix = '2 3')
             """)
+        try connection.run("""
+            CREATE TABLE IF NOT EXISTS chunks(
+                id INTEGER PRIMARY KEY, note_id TEXT NOT NULL, position INTEGER NOT NULL, path TEXT NOT NULL,
+                text TEXT NOT NULL, modified REAL NOT NULL, model TEXT NOT NULL, vec BLOB NOT NULL)
+            """)
+        try connection.run("CREATE INDEX IF NOT EXISTS chunks_note ON chunks(note_id)")
         try connection.run("PRAGMA user_version = \(Self.schemaVersion)")
         db = connection
     }
@@ -101,6 +107,7 @@ public final class SearchIndex: @unchecked Sendable {
         try db.transaction {
             for id in ids {
                 try db.run("DELETE FROM notes_fts WHERE rowid = (SELECT rowid FROM notes WHERE id = ?1)", [.text(id)])
+                try db.run("DELETE FROM chunks WHERE note_id = ?1", [.text(id)])
                 try db.run("DELETE FROM notes WHERE id = ?1", [.text(id)])
             }
         }

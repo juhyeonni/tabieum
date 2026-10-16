@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var vim: VimController?
     private var slashCommands: SlashCommands?
     private var indexService: IndexService?
+    private let embeddingItem = NSMenuItem()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let name = ProductInfo.main?.name ?? ProcessInfo.processInfo.processName
@@ -25,6 +26,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
         let overlayItem = menu.addItem(withTitle: "Show Caret Overlay", action: #selector(toggleCaretOverlay(_:)), keyEquivalent: "")
         overlayItem.target = self
+        embeddingItem.isEnabled = false
+        embeddingItem.isHidden = true
+        menu.addItem(embeddingItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit \(name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
@@ -34,7 +38,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         vim = VimController(tracker: tracker, toggles: toggles)
         slashCommands = SlashCommands(tracker: tracker, toggles: toggles)
         if let bundleIdentifier = ProductInfo.main?.bundleIdentifier {
-            let service = IndexService(indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier))
+            let service = IndexService(
+                indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier),
+                ragEnabled: { UserDefaults.standard.bool(forKey: "ragEnabled") },
+                onProgress: { progress in Task { @MainActor in self.showEmbedding(progress) } })
             service.start()
             indexService = service
         }
@@ -47,9 +54,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func showSettings() {
         let window = settingsWindow ?? makeWindow(title: "Settings", view: SettingsView(
-            status: status, toggles: toggles, ai: ai, showOnboarding: { [weak self] in self?.showOnboarding() }))
+            status: status, toggles: toggles, ai: ai, showOnboarding: { [weak self] in self?.showOnboarding() },
+            setRAG: { [weak self] in self?.setRAG($0) }))
         settingsWindow = window
         show(window)
+    }
+
+    private func showEmbedding(_ progress: EmbeddingProgress?) {
+        guard let progress else {
+            embeddingItem.isHidden = true
+            return
+        }
+        embeddingItem.title = progress.waitingForModel ? "Embedding: waiting for model" : "Embedding \(progress.done) / \(progress.total)"
+        embeddingItem.isHidden = false
+    }
+
+    private func setRAG(_ on: Bool) {
+        guard on else {
+            toggles.ragEnabled = false
+            indexService?.requestSync()
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Download Apple's embedding model?"
+        alert.informativeText = "RAG search needs Apple's on-device embedding model. macOS downloads it once. Your notes never leave this Mac."
+        alert.addButton(withTitle: "Turn On")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        toggles.ragEnabled = true
+        indexService?.requestSync()
+        Task {
+            await AppleEmbedder.requestAssets()
+            indexService?.requestSync()
+        }
     }
 
     private func showOnboarding() {

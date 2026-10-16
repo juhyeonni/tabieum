@@ -1,6 +1,7 @@
 import CoreServices
 import Foundation
 import OSLog
+import os
 
 public protocol NoteSource {
     func noteStamps() throws -> [NoteStamp]
@@ -11,12 +12,30 @@ public protocol NoteSource {
 extension NotesReader: NoteSource {}
 
 extension SearchIndex {
-    /// Decodes and upserts only new or changed notes, and deletes notes the source no longer lists.
-    /// A body that fails to decode is indexed by title only.
+    /// Syncs the full-text index, then embeds what changed. With `embedder` nil, RAG is off: no embedder is created and all chunks are deleted.
+    @discardableResult
     public func sync(
         from source: NoteSource,
         decode: (Data) throws -> String = { try NoteBodyDecoder.decode($0).markdown() },
-        log: (String) -> Void = { _ in }
+        log: (String) -> Void = { _ in },
+        embedder: (() -> Embedder)? = nil,
+        shouldPause: () -> Bool = { ProcessInfo.processInfo.isLowPowerModeEnabled },
+        progress: (EmbeddingProgress) -> Void = { _ in }
+    ) throws -> EmbedOutcome? {
+        try syncNotes(from: source, decode: decode, log: log)
+        guard let embedder else {
+            try clearChunks()
+            return nil
+        }
+        return try embedPending(using: embedder(), shouldPause: shouldPause, log: log, progress: progress)
+    }
+
+    /// Decodes and upserts only new or changed notes, and deletes notes the source no longer lists.
+    /// A body that fails to decode is indexed by title only.
+    func syncNotes(
+        from source: NoteSource,
+        decode: (Data) throws -> String,
+        log: (String) -> Void
     ) throws {
         let stamps = try source.noteStamps()
         let known = try modifiedDates()
@@ -120,25 +139,55 @@ public final class NoteStoreWatcher: @unchecked Sendable {
 public final class IndexService: @unchecked Sendable {
     private static let logger = Logger(subsystem: "NotesCore", category: "IndexService")
 
+    private final class Hook: @unchecked Sendable {
+        var action: (@Sendable () -> Void)?
+    }
+
     private let coalescer: SyncCoalescer
     private let watcher: NoteStoreWatcher
+    private let hook = Hook()
 
+    /// `onProgress` gets nil when nothing is being embedded. While RAG is off nothing is embedded and the embedder is never created.
     public init(
         indexURL: URL,
-        notesDatabaseURL: URL = NotesReader.defaultDatabaseURL
+        notesDatabaseURL: URL = NotesReader.defaultDatabaseURL,
+        ragEnabled: @escaping @Sendable () -> Bool = { false },
+        makeEmbedder: @escaping @Sendable () -> Embedder = { AppleEmbedder() },
+        onProgress: @escaping @Sendable (EmbeddingProgress?) -> Void = { _ in }
     ) {
+        let hook = hook
+        let cached = OSAllocatedUnfairLock<Embedder?>(initialState: nil)
         coalescer = SyncCoalescer {
-            await Task.detached {
+            let outcome = await Task.detached(priority: .background) { () -> EmbedOutcome? in
                 do {
                     let index = try SearchIndex(url: indexURL)
                     let reader = try NotesReader(databaseURL: notesDatabaseURL)
-                    try index.sync(from: reader, log: { Self.logger.error("\($0, privacy: .public)") })
+                    let embedder: (() -> Embedder)? = ragEnabled() ? {
+                        cached.withLock { state in
+                            if let state { return state }
+                            let made = makeEmbedder()
+                            state = made
+                            return made
+                        }
+                    } : nil
+                    if embedder == nil { cached.withLock { $0 = nil } }
+                    return try index.sync(
+                        from: reader, log: { Self.logger.error("\($0, privacy: .public)") },
+                        embedder: embedder, progress: { onProgress($0) })
                 } catch {
                     Self.logger.error("cannot sync the search index: \(String(describing: error), privacy: .public)")
+                    return nil
                 }
             }.value
+            if outcome == nil || outcome == .finished { onProgress(nil) }
+            guard outcome == .waitingForModel else { return }
+            Task {
+                try? await Task.sleep(for: .seconds(10))
+                hook.action?()
+            }
         }
         let coalescer = coalescer
+        hook.action = { Task { await coalescer.request() } }
         watcher = NoteStoreWatcher(directory: notesDatabaseURL.deletingLastPathComponent()) {
             Task { await coalescer.request() }
         }
@@ -146,7 +195,14 @@ public final class IndexService: @unchecked Sendable {
 
     public func start() {
         watcher.start()
-        let coalescer = coalescer
-        Task { await coalescer.request() }
+        requestSync()
+        let hook = hook
+        NotificationCenter.default.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: nil) { _ in
+            hook.action?()
+        }
+    }
+
+    public func requestSync() {
+        hook.action?()
     }
 }

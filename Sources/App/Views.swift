@@ -81,6 +81,7 @@ struct SettingsView: View {
     @ObservedObject var toggles: FeatureToggles
     let ai: AIFeature
     let showOnboarding: () -> Void
+    let setRAG: (Bool) -> Void
 
     var body: some View {
         TabView {
@@ -106,7 +107,7 @@ struct SettingsView: View {
                     .disabled(!toggles.vimEnabled)
             }
                 .tabItem { Label("Vim", systemImage: "keyboard") }
-            featureTab($toggles.ragEnabled, title: "Enable RAG search",
+            featureTab(Binding(get: { toggles.ragEnabled }, set: setRAG), title: "Enable RAG search",
                        detail: "Local semantic search over your notes. Runs on this Mac only.")
                 .tabItem { Label("RAG", systemImage: "magnifyingglass") }
             AITab(toggles: toggles, feature: ai)
