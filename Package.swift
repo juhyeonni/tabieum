@@ -10,6 +10,6 @@ let package = Package(
     targets: [
         .target(name: "NotesCore"),
         .executableTarget(name: "App", dependencies: ["NotesCore"]),
-        .testTarget(name: "NotesCoreTests", dependencies: ["NotesCore"]),
+        .testTarget(name: "NotesCoreTests", dependencies: ["NotesCore"], exclude: ["Fixtures"]),
     ]
 )
