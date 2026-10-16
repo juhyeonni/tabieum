@@ -33,6 +33,11 @@
 	<string>15.0</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>__PRODUCT_NAME__ sends Apple events to Notes to create and edit your notes.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>LSUIElement</key>
 	<true/>
 </dict>

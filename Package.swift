@@ -9,7 +9,9 @@ let package = Package(
     ],
     targets: [
         .target(name: "NotesCore"),
-        .executableTarget(name: "App", dependencies: ["NotesCore"]),
+        .target(name: "NotesAI", dependencies: ["NotesCore"]),
+        .executableTarget(name: "App", dependencies: ["NotesCore", "NotesAI"]),
         .testTarget(name: "NotesCoreTests", dependencies: ["NotesCore"], exclude: ["Fixtures"]),
+        .testTarget(name: "NotesAITests", dependencies: ["NotesAI", "NotesCore"]),
     ]
 )
