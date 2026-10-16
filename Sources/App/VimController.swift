@@ -8,9 +8,12 @@ private let latencyLog = Logger(subsystem: "dev.juhyeonni.notekit", category: "v
 
 private let tapCallback: CGEventTapCallBack = { _, type, event, refcon in
     guard let refcon else { return Unmanaged.passUnretained(event) }
+    let began = DispatchTime.now().uptimeNanoseconds
     let controller = Unmanaged<VimController>.fromOpaque(refcon).takeUnretainedValue()
     let key = TapKey(event)
     let pass = MainActor.assumeIsolated { controller.shouldPass(type, key) }
+    let ms = Double(DispatchTime.now().uptimeNanoseconds - began) / 1_000_000
+    if type == .keyDown { latencyLog.notice("tap callback: \(ms, format: .fixed(precision: 2)) ms") }
     return pass ? Unmanaged.passUnretained(event) : nil
 }
 
@@ -35,16 +38,22 @@ private struct TapKey: Sendable {
 }
 
 /// Drives the Notes body with the Vim engine through an active event tap that exists only while Vim is on.
-/// The tap only feeds the engine; AX reads and edits run afterwards, in key order, on the main actor.
+/// The tap only feeds the engine and queues the command; AX reads and edits run afterwards, in key order, on the runner's background queue.
 @MainActor
 final class VimController {
-    private static let eventTag: Int64 = 0x4E4F_5445
     private static let escapeKeyCode: Int64 = 53
-    private static let transientType = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
 
     private let tracker: TextFocusTracker
     private let indicator = ModeIndicator()
-    private var engine = VimEngine()
+    private lazy var runner = VimRunner(
+        engine: VimEngine(), ax: notes,
+        onApplied: { [weak self] start in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.recordLatency(since: start) } }
+        },
+        onIdle: { [weak self] in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.refreshAfterRun() } }
+        })
+    private let notes = NotesAX(source: AXTextFocusSource())
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var subscription: Int?
@@ -58,8 +67,6 @@ final class VimController {
     private var unsupported = false
     private var mismatchLine: NSRange?
     private var swallowed: Set<Int64> = []
-    private var queue: [(command: VimCommand, start: UInt64)] = []
-    private var draining = false
     private var latencies = LatencyWindow()
     private var latencyText: String?
     var showsLatency = false {
@@ -68,8 +75,11 @@ final class VimController {
 
     init(tracker: TextFocusTracker, toggles: FeatureToggles) {
         self.tracker = tracker
+        notes.onMismatch = { [weak self] line in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.selectionMismatch(on: line) } }
+        }
         toggles.$vimJKEnabled.sink { [weak self] on in
-            MainActor.assumeIsolated { self?.engine.jkEnabled = on }
+            MainActor.assumeIsolated { self?.runner.jkEnabled = on }
         }.store(in: &cancellables)
         toggles.$vimEnabled.sink { [weak self] on in
             MainActor.assumeIsolated { on ? self?.install() : self?.remove() }
@@ -109,7 +119,7 @@ final class VimController {
         active = false
         unsupported = false
         swallowed = []
-        queue = []
+        runner.clear()
         indicator.hide()
         log.notice("Vim off: event tap removed")
     }
@@ -121,42 +131,28 @@ final class VimController {
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             return true
         }
-        if event.tag == Self.eventTag { return true }
+        if event.tag == NotesAX.eventTag { return true }
         let keyCode = event.keyCode
         if type == .keyUp { return swallowed.remove(keyCode) == nil }
         guard active || unsupported, NSApp.keyWindow == nil, !claimsKey(keyCode) else { return true }
-        if !active, engine.mode == .insert, keyCode != Self.escapeKeyCode { return true }
+        let mode = runner.mode
+        if !active, mode == .insert, keyCode != Self.escapeKeyCode { return true }
         let flags = event.flags
         guard let key = vimKey(
             keyCode: Int(keyCode), shift: flags.contains(.maskShift), control: flags.contains(.maskControl),
-            command: flags.contains(.maskCommand), characters: event.characters, mode: engine.mode
+            command: flags.contains(.maskCommand), characters: event.characters, mode: mode
         ) else { return true }
-        guard case .consume(let command) = engine.feed(key, at: event.time) else { return true }
+        guard case .consume(let command) = runner.feed(key, at: event.time) else { return true }
         swallowed.insert(keyCode)
         if active {
-            enqueue(command, start: DispatchTime.now().uptimeNanoseconds)
+            runner.enqueue(command, start: DispatchTime.now().uptimeNanoseconds)
         } else if let arrow = fallbackArrowKeyCode(for: command) {
-            post(keyCode: CGKeyCode(arrow))
+            NotesAX.post(keyCode: CGKeyCode(arrow))
         }
         return false
     }
 
     // MARK: - execution
-
-    private func enqueue(_ command: VimCommand, start: UInt64) {
-        queue.append((command, start))
-        guard !draining else { return }
-        draining = true
-        Task {
-            while !queue.isEmpty {
-                let (command, start) = queue.removeFirst()
-                await run(command)
-                recordLatency(since: start)
-            }
-            draining = false
-            refresh(tracker.state(withCaretRect: false))
-        }
-    }
 
     private func recordLatency(since start: UInt64) {
         let ms = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000
@@ -166,51 +162,90 @@ final class VimController {
         if showsLatency { latencyText = String(format: "last %.0fms · p90 %.0fms", ms, p90) }
     }
 
-    private func run(_ command: VimCommand) async {
-        guard let buffer = tracker.buffer() else { return }
-        for action in engine.execute(command, on: buffer) {
-            guard await perform(action) else { return }
-        }
+    private func refreshAfterRun() {
+        refresh(tracker.state(withCaretRect: false))
     }
 
-    private func perform(_ action: VimAction) async -> Bool {
+    private func selectionMismatch(on line: NSRange?) {
+        mismatchLine = line
+        refreshAfterRun()
+    }
+
+    // MARK: - focus
+
+    private func refresh(_ state: TextFocusState) {
+        guard tap != nil else { return }
+        let buffer = tracker.buffer()
+        if buffer?.caretLine != mismatchLine { mismatchLine = nil }
+        active = buffer != nil && mismatchLine == nil
+        unsupported = buffer != nil && !active
+        indicator.show(runner.mode, in: state.editorFrame, detail: latencyText)
+    }
+}
+
+/// Applies Vim actions to the Notes body. Runs on the runner's background queue, so it touches no main-actor state.
+private final class NotesAX: VimAXSource, @unchecked Sendable {
+    static let eventTag: Int64 = 0x4E4F_5445
+    private static let transientType = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
+
+    private let source: AXTextFocusSource
+    var onMismatch: @Sendable (NSRange?) -> Void = { _ in }
+
+    init(source: AXTextFocusSource) {
+        self.source = source
+    }
+
+    private var isFocused: Bool {
+        source.isTrusted && source.frontmostBundleID == TextFocusTracker.notesBundleID
+            && source.focusedRole == TextFocusTracker.editorRole
+    }
+
+    private var textLength: Int? { isFocused ? source.textLength : nil }
+
+    func buffer() -> VimBuffer? {
+        guard isFocused, let text = source.text, let selection = source.selectedRange() else { return nil }
+        return VimBuffer(text: text, selection: selection)
+    }
+
+    func perform(_ action: VimAction) -> Bool {
         switch action {
         case .select(let range):
             return select(range)
         case .delete(let range):
-            guard tracker.buffer()?.deleteWouldHitBlockAttachment(range) == false,
-                  select(range), let before = tracker.textLength else { return false }
-            post(keyCode: 51)
-            return await wait { $0 == before - range.length }
+            guard buffer()?.deleteWouldHitBlockAttachment(range) == false,
+                  select(range), let before = textLength else { return false }
+            Self.post(keyCode: 51)
+            return wait { $0 == before - range.length }
         case .insert(let text, let offset):
-            guard select(NSRange(location: offset, length: 0)), let before = tracker.textLength else { return false }
+            guard select(NSRange(location: offset, length: 0)), let before = textLength else { return false }
             let applied = { (length: Int?) in length == before + text.utf16.count }
             if text == "\n" {
-                post(keyCode: 36)
-                return await wait(applied)
+                Self.post(keyCode: 36)
+                return wait(applied)
             }
-            return await paste(text, until: applied)
+            return paste(text, until: applied)
         case .undo:
-            let before = tracker.textLength
-            post(keyCode: 6, flags: .maskCommand)
+            let before = textLength
+            Self.post(keyCode: 6, flags: .maskCommand)
             // ponytail: an undo that keeps the length just waits out the timeout; compare text if that feels slow
-            _ = await wait(attempts: 150) { $0 != before }
+            _ = wait(attempts: 150) { $0 != before }
             return true
         }
     }
 
     private func select(_ range: NSRange) -> Bool {
-        tracker.setSelectedRange(range)
-        guard tracker.selectedRange() == range else {
-            mismatchLine = tracker.buffer()?.caretLine
+        guard isFocused, let length = source.textLength else { return false }
+        let location = min(max(range.location, 0), length)
+        source.setSelectedRange(NSRange(location: location, length: min(max(range.length, 0), length - location)))
+        guard source.selectedRange() == range else {
             log.info("Vim: selection write read back differently; passing keys through on this line")
-            refresh(tracker.state(withCaretRect: false))
+            onMismatch(buffer()?.caretLine)
             return false
         }
         return true
     }
 
-    private func paste(_ text: String, until applied: @escaping (Int?) -> Bool) async -> Bool {
+    private func paste(_ text: String, until applied: (Int?) -> Bool) -> Bool {
         let pasteboard = NSPasteboard.general
         let saved = (pasteboard.pasteboardItems ?? []).map { item in
             let copy = NSPasteboardItem()
@@ -223,14 +258,14 @@ final class VimController {
         pasteboard.declareTypes([.string, Self.transientType], owner: nil)
         pasteboard.setString(text, forType: .string)
         pasteboard.setData(Data(), forType: Self.transientType)
-        post(keyCode: 9, flags: .maskCommand)
-        let ok = await wait(applied)
+        Self.post(keyCode: 9, flags: .maskCommand)
+        let ok = wait(applied)
         pasteboard.clearContents()
         pasteboard.writeObjects(saved)
         return ok
     }
 
-    private func post(keyCode: CGKeyCode, flags: CGEventFlags = []) {
+    static func post(keyCode: CGKeyCode, flags: CGEventFlags = []) {
         guard let pid = NSRunningApplication.runningApplications(
             withBundleIdentifier: TextFocusTracker.notesBundleID
         ).first?.processIdentifier else { return }
@@ -238,29 +273,18 @@ final class VimController {
         for down in [true, false] {
             guard let event = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: down) else { continue }
             event.flags = flags
-            event.setIntegerValueField(.eventSourceUserData, value: Self.eventTag)
+            event.setIntegerValueField(.eventSourceUserData, value: eventTag)
             event.postToPid(pid)
         }
     }
 
     /// Polls the note's length until Notes has applied a synthesized edit, so the next action reads fresh text.
-    private func wait(attempts: Int = 250, _ done: (Int?) -> Bool) async -> Bool {
+    private func wait(attempts: Int = 250, _ done: (Int?) -> Bool) -> Bool {
         for _ in 0..<attempts {
-            if done(tracker.textLength) { return true }
-            try? await Task.sleep(for: .milliseconds(2))
+            if done(textLength) { return true }
+            Thread.sleep(forTimeInterval: 0.002)
         }
         return false
-    }
-
-    // MARK: - focus
-
-    private func refresh(_ state: TextFocusState) {
-        guard tap != nil else { return }
-        let buffer = tracker.buffer()
-        if buffer?.caretLine != mismatchLine { mismatchLine = nil }
-        active = buffer != nil && mismatchLine == nil
-        unsupported = buffer != nil && !active
-        indicator.show(engine.mode, in: state.editorFrame, detail: latencyText)
     }
 }
 

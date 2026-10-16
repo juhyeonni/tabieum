@@ -9,20 +9,20 @@ final class AXTextFocusSource: TextFocusSource {
     private var observer: AXObserver?
     private var workspaceTokens: [NSObjectProtocol] = []
 
-    var isTrusted: Bool { AXIsProcessTrusted() }
+    nonisolated var isTrusted: Bool { AXIsProcessTrusted() }
 
-    var frontmostBundleID: String? { NSWorkspace.shared.frontmostApplication?.bundleIdentifier }
+    nonisolated var frontmostBundleID: String? { NSWorkspace.shared.frontmostApplication?.bundleIdentifier }
 
-    var focusedRole: String? {
+    nonisolated var focusedRole: String? {
         focusedElement().flatMap { value($0, kAXRoleAttribute) as String? }
     }
 
-    var textLength: Int? {
+    nonisolated var textLength: Int? {
         focusedElement().flatMap { value($0, kAXNumberOfCharactersAttribute) as Int? }
     }
 
     /// AXStringForRange costs about 0.04 ms where AXValue costs 3.5 ms or more on the same text.
-    var text: String? {
+    nonisolated var text: String? {
         guard let element = focusedElement() else { return nil }
         guard let length: Int = value(element, kAXNumberOfCharactersAttribute) else { return nil }
         var range = CFRange(location: 0, length: length)
@@ -47,7 +47,7 @@ final class AXTextFocusSource: TextFocusSource {
         return AXValueGetValue(axValue, .cgRect, &rect) ? rect : nil
     }
 
-    func selectedRange() -> NSRange? {
+    nonisolated func selectedRange() -> NSRange? {
         guard let element = focusedElement(),
               let axValue: AXValue = value(element, kAXSelectedTextRangeAttribute)
         else { return nil }
@@ -56,7 +56,7 @@ final class AXTextFocusSource: TextFocusSource {
         return NSRange(location: range.location, length: range.length)
     }
 
-    func setSelectedRange(_ range: NSRange) {
+    nonisolated func setSelectedRange(_ range: NSRange) {
         guard let element = focusedElement() else { return }
         var cfRange = CFRange(location: range.location, length: range.length)
         guard let axValue = AXValueCreate(.cfRange, &cfRange) else { return }
@@ -131,14 +131,14 @@ final class AXTextFocusSource: TextFocusSource {
         self.observer = nil
     }
 
-    private func notesPID() -> pid_t? {
+    private nonisolated func notesPID() -> pid_t? {
         NSRunningApplication.runningApplications(withBundleIdentifier: TextFocusTracker.notesBundleID).first?.processIdentifier
     }
 
     /// The default timeout is about 6 s, and the event tap shares the main thread with these calls.
-    private static let messagingTimeout: Float = 0.1
+    private nonisolated static let messagingTimeout: Float = 0.1
 
-    private func focusedElement() -> AXUIElement? {
+    private nonisolated func focusedElement() -> AXUIElement? {
         guard isTrusted, let pid = notesPID() else { return nil }
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, Self.messagingTimeout)
@@ -150,7 +150,7 @@ final class AXTextFocusSource: TextFocusSource {
         return focused
     }
 
-    private func value<T>(_ element: AXUIElement, _ attribute: String) -> T? {
+    private nonisolated func value<T>(_ element: AXUIElement, _ attribute: String) -> T? {
         var result: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &result) == .success else { return nil }
         return result as? T
