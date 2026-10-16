@@ -80,7 +80,7 @@ struct SettingsView: View {
     @ObservedObject var status: PermissionStatus
     @ObservedObject var toggles: FeatureToggles
     let ai: AIFeature
-    @ObservedObject var shortcut: ShortcutController
+    let shortcuts: [ShortcutController]
     let showOnboarding: () -> Void
 
     var body: some View {
@@ -89,7 +89,7 @@ struct SettingsView: View {
                 PermissionRows(status: status)
                 Button("Show Permissions Onboarding…", action: showOnboarding)
                 Divider()
-                ShortcutRecorder(controller: shortcut)
+                ForEach(shortcuts, id: \.title) { ShortcutRecorder(controller: $0) }
                 Divider()
                 Text("Markdown shortcuts").bold()
                 ForEach(MarkdownStyle.allCases, id: \.self) { style in

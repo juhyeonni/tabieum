@@ -17,7 +17,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var slashCommands: SlashCommands?
     private var indexService: IndexService?
     private var searchPanel: SearchPanel?
-    private lazy var searchShortcut = ShortcutController(toggles: toggles) { [weak self] in self?.searchPanel?.show() }
+    private lazy var searchShortcut = ShortcutController(
+        toggles: toggles, title: "Search shortcut", id: 1, keyPath: \.searchShortcut) { [weak self] in self?.searchPanel?.show() }
+    private lazy var copyMarkdownShortcut = ShortcutController(
+        toggles: toggles, title: "Copy as Markdown shortcut", id: 2, keyPath: \.copyMarkdownShortcut) { CopyNoteAction.markdown() }
+    private lazy var copyLinkShortcut = ShortcutController(
+        toggles: toggles, title: "Copy Deeplink shortcut", id: 3, keyPath: \.copyLinkShortcut) { CopyNoteAction.link() }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let name = ProductInfo.main?.name ?? ProcessInfo.processInfo.processName
@@ -27,6 +32,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
         let overlayItem = menu.addItem(withTitle: "Show Caret Overlay", action: #selector(toggleCaretOverlay(_:)), keyEquivalent: "")
         overlayItem.target = self
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Copy Note as Markdown", action: #selector(copyMarkdown), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Copy Note Deeplink", action: #selector(copyLink), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit \(name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
@@ -41,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             indexService = service
             searchPanel = SearchPanel(indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier))
         }
-        _ = searchShortcut
+        _ = (searchShortcut, copyMarkdownShortcut, copyLinkShortcut)
 
         Task {
             await status.refresh()
@@ -51,7 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func showSettings() {
         let window = settingsWindow ?? makeWindow(title: "Settings", view: SettingsView(
-            status: status, toggles: toggles, ai: ai, shortcut: searchShortcut, showOnboarding: { [weak self] in self?.showOnboarding() }))
+            status: status, toggles: toggles, ai: ai, shortcuts: [searchShortcut, copyMarkdownShortcut, copyLinkShortcut], showOnboarding: { [weak self] in self?.showOnboarding() }))
         settingsWindow = window
         show(window)
     }
@@ -84,6 +92,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let anyVisible = [onboardingWindow, settingsWindow].contains { $0 != nil && $0 !== closing && $0!.isVisible }
         status.setPolling(anyVisible)
     }
+
+    @objc private func copyMarkdown() { CopyNoteAction.markdown() }
+
+    @objc private func copyLink() { CopyNoteAction.link() }
 
     @objc private func toggleCaretOverlay(_ sender: NSMenuItem) {
         caretOverlay.toggle()
