@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let tracker = TextFocusTracker(source: AXTextFocusSource())
     private lazy var caretOverlay = CaretOverlay(tracker: tracker)
     private var markdownShortcuts: MarkdownShortcuts?
+    private var vim: VimController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let name = ProductInfo.main?.name ?? ProcessInfo.processInfo.processName
@@ -28,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem = item
         ai.config = AISettings.savedConfig()
         markdownShortcuts = MarkdownShortcuts(tracker: tracker, toggles: toggles)
+        vim = VimController(tracker: tracker, toggles: toggles)
 
         Task {
             await status.refresh()
