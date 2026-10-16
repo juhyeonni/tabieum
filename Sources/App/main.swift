@@ -40,10 +40,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         embeddingItem.isEnabled = false
         embeddingItem.isHidden = true
         menu.addItem(embeddingItem)
-        menu.addItem(withTitle: "Backlinks", action: #selector(toggleBacklinks), keyEquivalent: "").target = self
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Copy Note as Markdown", action: #selector(copyMarkdown), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Copy Note Deeplink", action: #selector(copyLink), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit \(name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
@@ -149,14 +145,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let closing = notification.object as? NSWindow
         let anyVisible = [onboardingWindow, settingsWindow].contains { $0 != nil && $0 !== closing && $0!.isVisible }
         status.setPolling(anyVisible)
-    }
-
-    @objc private func copyMarkdown() { CopyNoteAction.markdown() }
-
-    @objc private func copyLink() { CopyNoteAction.link() }
-
-    @objc private func toggleBacklinks() {
-        backlinksPanel?.toggle()
     }
 
     @objc private func toggleVimLatency(_ sender: NSMenuItem) {
