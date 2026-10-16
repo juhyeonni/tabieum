@@ -58,12 +58,13 @@ private func key(_ code: Int, shift: Bool = false, control: Bool = false, comman
     #expect(engine.mode == .insert)
 }
 
-@Test func caretLineDetectsAttachments() {
-    let text = "one\ntwo \u{FFFC}\nthree"
-    #expect(VimBuffer(text: text, selection: NSRange(location: 1, length: 0)).caretLine == NSRange(location: 0, length: 4))
-    #expect(!VimBuffer(text: text, selection: NSRange(location: 1, length: 0)).caretLineHasAttachment)
-    #expect(VimBuffer(text: text, selection: NSRange(location: 5, length: 0)).caretLineHasAttachment)
-    #expect(!VimBuffer(text: text, selection: NSRange(location: text.utf16.count, length: 0)).caretLineHasAttachment)
+@Test func deletesNeverCrossATableLineButMayCrossAHashtag() {
+    let buffer = VimBuffer(text: "one\n\u{FFFC}\ntwo #tag\u{FFFC}\nthree")
+    #expect(buffer.caretLine == NSRange(location: 0, length: 4))
+    #expect(buffer.deleteWouldHitBlockAttachment(NSRange(location: 2, length: 4)))
+    #expect(buffer.deleteWouldHitBlockAttachment(NSRange(location: 4, length: 2)))
+    #expect(!buffer.deleteWouldHitBlockAttachment(NSRange(location: 6, length: 9)))
+    #expect(!buffer.deleteWouldHitBlockAttachment(NSRange(location: 0, length: 3)))
 }
 
 @Test func unsupportedLinesTurnBasicMotionsIntoArrowKeys() {

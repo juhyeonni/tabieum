@@ -25,8 +25,15 @@ final class AXTextFocusSource: TextFocusSource {
         focusedElement().flatMap { value($0, kAXValueAttribute) as String? }
     }
 
+    /// The editor's visible part: a long note's text area runs past the window, so it is clipped to its scroll area.
     var frame: CGRect? {
-        guard let element = focusedElement(), let axValue: AXValue = value(element, "AXFrame") else { return nil }
+        guard let element = focusedElement(), let rect = axFrame(element) else { return nil }
+        let visible = (value(element, kAXParentAttribute) as AXUIElement?).flatMap(axFrame)
+        return visible.map { rect.intersection($0) } ?? rect
+    }
+
+    private func axFrame(_ element: AXUIElement) -> CGRect? {
+        guard let axValue: AXValue = value(element, "AXFrame") else { return nil }
         var rect = CGRect.zero
         return AXValueGetValue(axValue, .cgRect, &rect) ? rect : nil
     }
