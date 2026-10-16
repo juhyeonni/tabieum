@@ -31,6 +31,8 @@
 	</array>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>__PRODUCT_NAME__ sends Apple events to Notes to create and edit your notes.</string>
 	<key>LSUIElement</key>
 	<true/>
 </dict>

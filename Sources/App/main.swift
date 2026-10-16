@@ -1,17 +1,66 @@
 import AppKit
 import NotesCore
+import SwiftUI
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem?
+    private let status = PermissionStatus()
+    private let toggles = FeatureToggles()
+    private var onboardingWindow: NSWindow?
+    private var settingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let name = ProductInfo.main?.name ?? ProcessInfo.processInfo.processName
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.image = NSImage(systemSymbolName: "note.text", accessibilityDescription: name)
         let menu = NSMenu()
+        menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Quit \(name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
         statusItem = item
+
+        Task {
+            await status.refresh()
+            if !status.allGranted { showOnboarding() }
+        }
+    }
+
+    @objc private func showSettings() {
+        let window = settingsWindow ?? makeWindow(title: "Settings", view: SettingsView(
+            status: status, toggles: toggles, showOnboarding: { [weak self] in self?.showOnboarding() }))
+        settingsWindow = window
+        show(window)
+    }
+
+    private func showOnboarding() {
+        let window = onboardingWindow ?? makeWindow(title: "Permissions", view: OnboardingView(
+            status: status, later: { [weak self] in self?.onboardingWindow?.close() }))
+        onboardingWindow = window
+        show(window)
+    }
+
+    private func makeWindow(title: String, view: some View) -> NSWindow {
+        let window = NSWindow(contentViewController: NSHostingController(rootView: view))
+        window.title = title
+        window.styleMask.remove(.resizable)
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.center()
+        return window
+    }
+
+    private func show(_ window: NSWindow) {
+        NSApp.activate()
+        window.makeKeyAndOrderFront(nil)
+        status.setPolling(true)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        let closing = notification.object as? NSWindow
+        let anyVisible = [onboardingWindow, settingsWindow].contains { $0 != nil && $0 !== closing && $0!.isVisible }
+        status.setPolling(anyVisible)
     }
 }
 
