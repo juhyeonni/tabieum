@@ -178,7 +178,8 @@ extension SearchIndex {
             """, [.text(id)]) {
             (SearchResult(id: SQLiteConnection.text($0, 0), title: SQLiteConnection.text($0, 1),
                           folder: SQLiteConnection.text($0, 2),
-                          modified: Date(timeIntervalSinceReferenceDate: sqlite3_column_double($0, 3)), snippet: ""),
+                          modified: Date(timeIntervalSinceReferenceDate: sqlite3_column_double($0, 3)), snippet: "",
+                          ownerIdentifier: nil),
              SQLiteConnection.text($0, 4))
         }.first
     }

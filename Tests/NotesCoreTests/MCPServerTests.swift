@@ -19,8 +19,8 @@ private func fixtureIndex(vectors: Bool = false) throws -> URL {
     let index = try SearchIndex(url: url)
     let modified = Date(timeIntervalSinceReferenceDate: 100)
     try index.upsert((1...60).map {
-        IndexedNote(id: "n\($0)", title: "Apple note \($0)", folder: "Work", modified: modified, body: "apple body \($0)")
-    } + [IndexedNote(id: "car", title: "Garage", folder: "Home", modified: modified, body: "my automobile")])
+        IndexedNote(id: "n\($0)", title: "Apple note \($0)", folder: "Work", modified: modified, body: "apple body \($0)", owner: "")
+    } + [IndexedNote(id: "car", title: "Garage", folder: "Home", modified: modified, body: "my automobile", owner: "")])
     if vectors {
         let chunk = Chunk(noteID: "car", path: "Garage", position: 0, modified: modified, text: "my automobile")
         try index.replaceChunks(noteID: "car", with: [StoredChunk(chunk: chunk, model: "stub", vector: [1, 0])])
