@@ -15,11 +15,15 @@ enum AISettings {
         return AIConfig(baseURL: baseURL, chatModel: defaults.string(forKey: "aiChatModel") ?? "",
                       embeddingModel: defaults.string(forKey: "aiEmbeddingModel") ?? "",
                       apiKey: APIKeychain.key(service: service, host: host),
-                      extraHeaders: headers(defaults.string(forKey: "aiExtraHeaders") ?? ""))
+                      extraHeaders: headers(defaults.string(forKey: "aiExtraHeaders") ?? ""),
+                      format: AIFormat(rawValue: defaults.string(forKey: "aiFormat") ?? "") ?? .openAI)
     }
 
     static func makeProvider(_ config: AIConfig) -> any AIProvider {
-        OpenAICompatibleProvider(config: config, consent: HostConsent())
+        switch config.format {
+        case .openAI: OpenAICompatibleProvider(config: config, consent: HostConsent())
+        case .anthropic: AnthropicProvider(config: config, consent: HostConsent())
+        }
     }
 }
 
@@ -32,6 +36,7 @@ extension AIError {
         case let .stream(message): "The server ended the reply: \(message)"
         case .badResponse: "The server sent an unexpected response."
         case let .consentRequired(host): "Sending to \(host) needs your consent."
+        case .embeddingsUnavailable: "Embeddings are not available in this API format."
         }
     }
 }
@@ -43,6 +48,7 @@ struct AITab: View {
     @AppStorage("aiChatModel") private var chatModel = ""
     @AppStorage("aiEmbeddingModel") private var embeddingModel = ""
     @AppStorage("aiExtraHeaders") private var extraHeaders = ""
+    @AppStorage("aiFormat") private var format = AIFormat.openAI.rawValue
     @State private var apiKey = ""
     @State private var hosts: [String] = []
     @State private var result = ""
@@ -68,12 +74,18 @@ struct AITab: View {
                 Button(recording ? "Press keys…" : toggles.aiShortcut.label, action: record)
                 if shortcutRejected { Text("Include ⌘ or ⌃.").font(.caption).foregroundStyle(.red) }
             }
+            Picker("API format", selection: $format) {
+                Text("OpenAI-compatible").tag(AIFormat.openAI.rawValue)
+                Text("Anthropic").tag(AIFormat.anthropic.rawValue)
+            }
             TextField("Base URL", text: $baseURL, prompt: Text("http://localhost:11434/v1"))
             if !baseURL.isEmpty && host == nil {
                 Text("Use https, or http to localhost.").font(.caption).foregroundStyle(.red)
             }
             TextField("Chat model", text: $chatModel, prompt: Text("llama3.2"))
-            TextField("Embedding model", text: $embeddingModel, prompt: Text("Optional"))
+            if format == AIFormat.openAI.rawValue {
+                TextField("Embedding model", text: $embeddingModel, prompt: Text("Optional"))
+            }
             SecureField("API key", text: $apiKey, prompt: Text("Optional"))
             TextField("Extra headers", text: $extraHeaders, prompt: Text("Name: value, one per line"), axis: .vertical)
                 .lineLimit(2...6)
@@ -110,6 +122,7 @@ struct AITab: View {
         .onChange(of: chatModel) { apply() }
         .onChange(of: embeddingModel) { apply() }
         .onChange(of: extraHeaders) { apply() }
+        .onChange(of: format) { apply() }
         .onChange(of: apiKey) {
             if let host { APIKeychain.setKey(apiKey, service: AISettings.service, host: host) }
             apply()
@@ -147,7 +160,8 @@ struct AITab: View {
     private func apply() {
         feature.config = AIConfig(baseURL: baseURL, chatModel: chatModel,
                                   embeddingModel: embeddingModel, apiKey: apiKey,
-                                  extraHeaders: AISettings.headers(extraHeaders))
+                                  extraHeaders: AISettings.headers(extraHeaders),
+                                  format: AIFormat(rawValue: format) ?? .openAI)
     }
 
     private func test() {
@@ -162,7 +176,7 @@ struct AITab: View {
                     result = "Reply: \(reply)"
                 }
                 try Task.checkCancellation()
-                if !embeddingModel.isEmpty {
+                if !embeddingModel.isEmpty, format == AIFormat.openAI.rawValue {
                     let vectors = try await provider.embed(["hello"])
                     result += " · embedding: \(vectors.first?.count ?? 0) dimensions"
                 }
