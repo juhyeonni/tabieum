@@ -22,7 +22,7 @@ The app runs as a menu-bar item with no Dock icon.
 ## Notes
 
 - **Search index:** the app keeps a full-text index of your unlocked notes in `~/Library/Application Support/<bundle id>/index.sqlite`. It holds a plain-text copy of each note's title, folder and Markdown body, outside the Notes container, so any process running as you can read it. Locked notes are never indexed. It is a cache: delete the file and it is rebuilt. Syncing needs Full Disk Access; without it the app keeps running and logs why it cannot sync.
-- **AI agents (MCP):** the app's own executable is a read-only MCP server over stdio when started with `--mcp`. It opens only the search index, never Notes, so the client needs no Full Disk Access. Turn on Settings > MCP first; while it is off, every tool call returns an error saying so. Results are as fresh as the app's last sync. Tools: `search_notes` and `get_note`.
+- **AI agents (MCP):** the app's own executable is a read-only MCP server over stdio when started with `--mcp`. It opens only the search index, never Notes, so the client needs no Full Disk Access. Turn on Settings > MCP first; while it is off, every tool call returns an error saying so. Results are as fresh as the app's last sync. Tools: `search_notes`, `get_note` and `list_backlinks`.
   - Claude Desktop, in `claude_desktop_config.json`:
     ```json
     { "mcpServers": { "notes": { "command": "/path/to/NoteKit.app/Contents/MacOS/NoteKit", "args": ["--mcp"] } } }
