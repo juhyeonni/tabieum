@@ -16,7 +16,7 @@ final class CaretOverlay {
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         let view = NSView()
         view.wantsLayer = true
-        view.layer?.borderColor = NSColor.systemRed.cgColor
+        view.layer?.borderColor = NSColor.systemGray.withAlphaComponent(0.35).cgColor
         view.layer?.borderWidth = 1
         window.contentView = view
         return window

@@ -162,7 +162,8 @@ final class VimController {
         case .select(let range):
             return select(range)
         case .delete(let range):
-            guard select(range), let before = tracker.textLength else { return false }
+            guard tracker.buffer()?.deleteWouldHitBlockAttachment(range) == false,
+                  select(range), let before = tracker.textLength else { return false }
             post(keyCode: 51)
             return await wait { $0 == before - range.length }
         case .insert(let text, let offset):
@@ -241,7 +242,7 @@ final class VimController {
         guard tap != nil else { return }
         let buffer = tracker.buffer()
         if buffer?.caretLine != mismatchLine { mismatchLine = nil }
-        active = buffer.map { !$0.caretLineHasAttachment && mismatchLine == nil } ?? false
+        active = buffer != nil && mismatchLine == nil
         unsupported = buffer != nil && !active
         indicator.show(engine.mode, in: state.editorFrame)
     }

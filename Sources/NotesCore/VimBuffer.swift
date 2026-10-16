@@ -42,9 +42,17 @@ public struct VimBuffer: Equatable, Sendable {
         return ns.lineRange(for: NSRange(location: min(selection.location, ns.length), length: 0))
     }
 
-    /// U+FFFC stands in for attachments and tables, where AX ranges cannot be trusted.
-    public var caretLineHasAttachment: Bool {
-        (text as NSString).substring(with: caretLine).contains("\u{FFFC}")
+    /// A line holding only U+FFFC is a table or an image; deleting across it would destroy the attachment.
+    public func deleteWouldHitBlockAttachment(_ range: NSRange) -> Bool {
+        let ns = text as NSString
+        guard range.length > 0 else { return false }
+        var location = ns.lineRange(for: NSRange(location: min(range.location, ns.length), length: 0)).location
+        while location < min(NSMaxRange(range), ns.length) {
+            let line = ns.lineRange(for: NSRange(location: location, length: 0))
+            if ns.substring(with: line).trimmingCharacters(in: .newlines) == "\u{FFFC}" { return true }
+            location = NSMaxRange(line)
+        }
+        return false
     }
 }
 
