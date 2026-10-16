@@ -81,6 +81,17 @@ private func markdown(_ text: String, _ runs: [[UInt8]]) throws -> String {
 }
 
 @Suite struct NoteBodyDecoderTests {
+    // AC10
+    @Test func goldenFixtureDecodesToCommittedMarkdown() throws {
+        let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures")
+        let hex = Array(try String(contentsOf: fixtures.appendingPathComponent("golden-macOS26.hex"), encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines))
+        let body = Data(stride(from: 0, to: hex.count, by: 2).map { UInt8(String(hex[$0...$0 + 1]), radix: 16)! })
+        let markdown = try NoteBodyDecoder.decode(body).markdown()
+        let expected = try String(contentsOf: fixtures.appendingPathComponent("golden-macOS26.md"), encoding: .utf8)
+        #expect(markdown == expected)
+    }
+
     @Test func decodesGzipBodyToTextAndRuns() throws {
         let runs = [Encode.run(3, weight: 1), Encode.run(4, paragraph: Encode.paragraph(0), link: "https://example.com")]
         let document = try NoteBodyDecoder.decode(Encode.gzipBody("abcdefg", runs))
