@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let toggles = FeatureToggles()
     private var onboardingWindow: NSWindow?
     private var settingsWindow: NSWindow?
+    private let caretOverlay = CaretOverlay(tracker: TextFocusTracker(source: AXTextFocusSource()))
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let name = ProductInfo.main?.name ?? ProcessInfo.processInfo.processName
@@ -16,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         item.button?.image = NSImage(systemSymbolName: "note.text", accessibilityDescription: name)
         let menu = NSMenu()
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
+        let overlayItem = menu.addItem(withTitle: "Show Caret Overlay", action: #selector(toggleCaretOverlay(_:)), keyEquivalent: "")
+        overlayItem.target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit \(name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
@@ -61,6 +64,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let closing = notification.object as? NSWindow
         let anyVisible = [onboardingWindow, settingsWindow].contains { $0 != nil && $0 !== closing && $0!.isVisible }
         status.setPolling(anyVisible)
+    }
+
+    @objc private func toggleCaretOverlay(_ sender: NSMenuItem) {
+        caretOverlay.toggle()
+        sender.state = caretOverlay.isOn ? .on : .off
     }
 }
 
