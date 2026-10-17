@@ -72,9 +72,26 @@ enum NotesControl {
         }
     }
 
+    /// The Edit menu's Undo (⌘Z) or Redo (⇧⌘Z) item.
+    static func historyItem(redo: Bool, pid: pid_t) -> AXUIElement? {
+        menuItem(char: "Z", modifiers: redo ? 1 : 0, pid: pid)
+    }
+
+    static func isEnabled(_ item: AXUIElement) -> Bool {
+        value(item, kAXEnabledAttribute) as Bool? ?? false
+    }
+
+    static func press(_ item: AXUIElement) {
+        AXUIElementPerformAction(item, kAXPressAction as CFString)
+    }
+
     private static func menuItem(for style: NotesStyle, pid: pid_t) -> AXUIElement? {
-        guard let bar = element(AXUIElementCreateApplication(pid), kAXMenuBarAttribute) else { return nil }
         let (char, modifiers) = style.keyEquivalent
+        return menuItem(char: char, modifiers: modifiers, pid: pid)
+    }
+
+    private static func menuItem(char: String, modifiers: Int, pid: pid_t) -> AXUIElement? {
+        guard let bar = element(AXUIElementCreateApplication(pid), kAXMenuBarAttribute) else { return nil }
         return find(in: bar, depth: 4) { item in
             guard let cmdChar: String = value(item, kAXMenuItemCmdCharAttribute),
                   cmdChar.caseInsensitiveCompare(char) == .orderedSame else { return false }
