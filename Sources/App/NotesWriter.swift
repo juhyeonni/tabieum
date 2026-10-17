@@ -77,6 +77,10 @@ struct AppleScriptNotesWriter: NoteWriter {
         _ = try await Self.run("tell application \"Notes\" to set body of note id \(Self.quoted(note.handle)) to \(Self.quoted(html))")
     }
 
+    func moveToTrash(_ note: ResolvedNote) async throws {
+        _ = try await Self.run("tell application \"Notes\" to delete note id \(Self.quoted(note.handle))")
+    }
+
     /// Every folder in every account, for the settings picker.
     func folders() async -> [NoteTarget] {
         let script = """
