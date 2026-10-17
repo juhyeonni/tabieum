@@ -110,12 +110,25 @@ public enum VimOperator: Equatable, Sendable {
     }
 }
 
+public struct VimObject: Equatable, Sendable {
+    var key: Character
+    var around: Bool
+
+    init?(_ key: Character, around: Bool) {
+        guard "wp\"'()[]{}".contains(key) else { return nil }
+        self.key = key
+        self.around = around
+    }
+}
+
 public indirect enum VimCommand: Equatable, Sendable {
     case none
     case motion(VimMotion)
     case counted(VimCommand, Int)
     case operate(VimOperator, VimMotion)
     case operateLines(VimOperator)
+    case operateObject(VimOperator, VimObject)
+    case selectObject(VimObject)
     case deleteChar, put, putBefore, join, toggleCase, undo, redo
     case replaceChar(Character)
     case insert(VimInsertion)
@@ -248,11 +261,17 @@ public struct VimEngine: Sendable {
             lastFind = find
             return .consume(motionOrOperate(.find(find)))
         }
+        if let prefix, "ia".contains(prefix) {
+            guard let object = VimObject(c, around: prefix == "a") else { return .consume(cancel()) }
+            guard let op else { return .consume(finish(.selectObject(object))) }
+            return .consume(operate(.operateObject(op, object)))
+        }
         if let digit = c.isASCII ? c.wholeNumberValue : nil, digit > 0 || count != nil {
             count = min((count ?? 0) * 10 + digit, 9999)
             return .consume(.none)
         }
         if "ftFT".contains(c) { pending = c; return .consume(.none) }
+        if c == "i" || c == "a", op != nil || mode == .visual { pending = c; return .consume(.none) }
         if let op {
             if VimOperator(c) == op { return .consume(operate(.operateLines(op))) }
             if c == "g" { pending = c; return .consume(.none) }
@@ -383,6 +402,22 @@ public struct VimEngine: Sendable {
             }
             if span.linewise { return lines(op, span.lo, span.hi, buffer, t) }
             return characters(op, span.lo, span.hi, buffer, t)
+
+        case .operateObject(let op, let object):
+            guard let span = span(of: object, at: cur, in: t) else {
+                if op == .change { mode = .normal }
+                return []
+            }
+            if span.linewise { return lines(op, span.lo, span.hi, buffer, t) }
+            return characters(op, span.lo, span.hi, buffer, t)
+
+        case .selectObject(let object):
+            guard visualAnchor != nil else { return [] }
+            let at = t.clamp(t.index(at: visualCursor))
+            guard let span = span(of: object, at: at, in: t), span.lo < span.hi else { return [] }
+            visualAnchor = t.offsets[span.lo]
+            visualCursor = t.offsets[span.hi - 1]
+            return [.select(visualRange(visualAnchor!, in: t))]
 
         case .put, .putBefore:
             return put(before: command == .putBefore, n, at: cur, buffer, t)
@@ -665,6 +700,87 @@ public struct VimEngine: Sendable {
         case .firstLine: return (0, lineEnd, true)
         case .lastLine: return (t.lineStart(cur), t.count, true)
         }
+    }
+
+    private func span(of object: VimObject, at cur: Int, in t: VimText) -> (lo: Int, hi: Int, linewise: Bool)? {
+        guard cur < t.count else { return nil }
+        let key = object.key
+        switch key {
+        case "w": return wordObject(around: object.around, at: cur, in: t).map { ($0, $1, false) }
+        case "p": return paragraphObject(around: object.around, at: cur, in: t).map { ($0, $1, true) }
+        case "\"", "'": return quoteObject(key, around: object.around, at: cur, in: t).map { ($0, $1, false) }
+        default: return bracketObject(key, around: object.around, at: cur, in: t).map { ($0, $1, false) }
+        }
+    }
+
+    private func wordObject(around: Bool, at cur: Int, in t: VimText) -> (Int, Int)? {
+        let start = t.lineStart(cur), end = t.lineEnd(cur)
+        guard cur < end else { return nil }
+        func run(_ i: Int) -> (Int, Int) {
+            let cls = charClass(t.chars[i])
+            var lo = i, hi = i + 1
+            while lo > start && charClass(t.chars[lo - 1]) == cls { lo -= 1 }
+            while hi < end && charClass(t.chars[hi]) == cls { hi += 1 }
+            return (lo, hi)
+        }
+        var (lo, hi) = run(cur)
+        guard around else { return (lo, hi) }
+        if hi < end {
+            hi = run(hi).1
+        } else if lo > start, charClass(t.chars[cur]) != .blank {
+            lo = run(lo - 1).0
+        }
+        return (lo, hi)
+    }
+
+    private func paragraphObject(around: Bool, at cur: Int, in t: VimText) -> (Int, Int)? {
+        func blank(_ i: Int) -> Bool { t.lineStart(i) == t.lineEnd(i) }
+        func run(_ i: Int) -> (Int, Int) {
+            let isBlank = blank(i)
+            var lo = t.lineStart(i), hi = t.lineEnd(i)
+            while lo > 0 && blank(lo - 1) == isBlank { lo = t.lineStart(lo - 1) }
+            while hi < t.count && blank(hi + 1) == isBlank { hi = t.lineEnd(hi + 1) }
+            return (lo, hi)
+        }
+        var (lo, hi) = run(cur)
+        guard around else { return (lo, hi) }
+        if hi < t.count {
+            hi = run(hi + 1).1
+        } else if lo > 0 {
+            lo = run(lo - 1).0
+        }
+        return (lo, hi)
+    }
+
+    private func quoteObject(_ quote: Character, around: Bool, at cur: Int, in t: VimText) -> (Int, Int)? {
+        let marks = (t.lineStart(cur)..<t.lineEnd(cur)).filter { t.chars[$0] == quote }
+        for k in stride(from: 0, to: marks.count - 1, by: 2) where marks[k] <= cur && cur <= marks[k + 1] {
+            return around ? (marks[k], marks[k + 1] + 1) : (marks[k] + 1, marks[k + 1])
+        }
+        return nil
+    }
+
+    private func bracketObject(_ bracket: Character, around: Bool, at cur: Int, in t: VimText) -> (Int, Int)? {
+        let pairs: [(Character, Character)] = [("(", ")"), ("[", "]"), ("{", "}")]
+        guard let (o, c) = pairs.first(where: { $0.0 == bracket || $0.1 == bracket }) else { return nil }
+        var open = t.chars[cur] == o ? cur : nil
+        var depth = 0, j = cur - 1
+        while open == nil && j >= 0 {
+            if t.chars[j] == c { depth += 1 }
+            if t.chars[j] == o {
+                if depth == 0 { open = j }
+                depth -= 1
+            }
+            j -= 1
+        }
+        guard let open else { return nil }
+        depth = 0
+        for close in open..<t.count {
+            if t.chars[close] == o { depth += 1 }
+            if t.chars[close] == c { depth -= 1 }
+            if depth == 0 { return around ? (open, close + 1) : (open + 1, close) }
+        }
+        return nil
     }
 
     private mutating func travel(
