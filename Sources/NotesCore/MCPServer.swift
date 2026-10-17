@@ -13,6 +13,7 @@ public struct MCPServer: Sendable {
         case listBacklinks = "list_backlinks"
         case createNote = "create_note"
         case updateNote = "update_note"
+        case deleteNote = "delete_note"
 
         var description: String {
             switch self {
@@ -20,6 +21,7 @@ public struct MCPServer: Sendable {
             case .getNote: "Read one note as Markdown by its id."
             case .listBacklinks: "List the notes that link to one note, by its id."
             case .createNote: "Create a note from a title and a Markdown body. It goes into the folder the owner chose and may need the owner's approval in the app."
+            case .deleteNote: "Move a note to Recently Deleted, where the owner can restore it. It may need the owner's approval in the app."
             case .updateNote: "Replace the whole body of an existing note with Markdown. Read the note with get_note first and pass its modified value as expected_modified; the edit is refused if the note changed since. It may need the owner's approval in the app."
             }
         }
@@ -30,7 +32,7 @@ public struct MCPServer: Sendable {
                 ["type": "object", "required": ["query"], "properties": [
                     "query": ["type": "string"],
                     "k": ["type": "integer", "minimum": 1, "maximum": 50, "default": 10]]]
-            case .getNote, .listBacklinks:
+            case .getNote, .listBacklinks, .deleteNote:
                 ["type": "object", "required": ["id"], "properties": ["id": ["type": "string"]]]
             case .createNote:
                 ["type": "object", "required": ["title", "body"], "properties": [
@@ -47,7 +49,7 @@ public struct MCPServer: Sendable {
         var annotations: [String: Any]? {
             switch self {
             case .createNote: ["readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false]
-            case .updateNote: ["readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false]
+            case .updateNote, .deleteNote: ["readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false]
             default: nil
             }
         }
@@ -57,6 +59,7 @@ public struct MCPServer: Sendable {
             switch self {
             case .createNote: .create
             case .updateNote: .edit
+            case .deleteNote: .delete
             default: nil
             }
         }
@@ -149,6 +152,7 @@ public struct MCPServer: Sendable {
             case .listBacklinks: output = try listBacklinks(openIndex(), arguments)
             case .createNote: output = try createNote(arguments)
             case .updateNote: output = try updateNote(arguments)
+            case .deleteNote: output = try deleteNote(arguments)
             }
             return content(output, isError: false)
         } catch let failure as ToolFailure {
@@ -187,6 +191,11 @@ public struct MCPServer: Sendable {
         }
         return try askApp(["action": "edit", "id": id, "html": NoteHTML.html(fromMarkdown: body), "expected_modified": expected],
                           success: "Replaced the body of the note.")
+    }
+
+    private func deleteNote(_ arguments: [String: Any]) throws -> String {
+        guard let id = arguments["id"] as? String, !id.isEmpty else { throw ToolFailure(message: "id must be a non-empty string.") }
+        return try askApp(["action": "delete", "id": id], success: "Moved the note to Recently Deleted.")
     }
 
     /// Sends one request to the running app and turns its reply into the tool's result or error.

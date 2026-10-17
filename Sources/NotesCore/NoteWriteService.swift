@@ -39,6 +39,8 @@ public protocol NoteWriter: Sendable {
     /// The note with this database identifier, only if it is inside `scope`, not locked and in Notes; else nil.
     func resolveNote(identifier: String, scope: WriteScope, target: NoteTarget) async throws -> ResolvedNote?
     func replaceBody(of note: ResolvedNote, with html: String) async throws
+    /// Moves the note to Recently Deleted, where the owner can restore it.
+    func moveToTrash(_ note: ResolvedNote) async throws
 }
 
 public struct ConfirmRequest: Equatable, Sendable {
@@ -110,7 +112,8 @@ public struct NoteWriteService: Sendable {
             else { return Self.reply(error: "edit needs an id, an html body and an ISO 8601 expected_modified.") }
             return await edit(id: id, html: html, expectedModified: expected, session: session)
         case .delete:
-            return Self.reply(error: "\(action.rawValue) is not supported yet.")
+            guard let id = request["id"] as? String, !id.isEmpty else { return Self.reply(error: "delete needs an id.") }
+            return await delete(id: id, session: session)
         }
     }
 
@@ -164,6 +167,27 @@ public struct NoteWriteService: Sendable {
                 return Self.reply(error: refusal)
             }
             try await writer.replaceBody(of: note, with: html)
+            return Self.reply(ok: true)
+        } catch {
+            return failureReply(error)
+        }
+    }
+
+    private func delete(id: String, session: WriteSession) async -> String {
+        let settings = settings()
+        if let refusal = gate(.delete, settings) { return Self.reply(error: refusal) }
+        if settings.scope == .targetFolder, settings.targetFolder.isEmpty {
+            return Self.reply(error: "No target folder is chosen. Choose one in \(productName) Settings.")
+        }
+        let target = NoteTarget(account: settings.targetAccount, folder: settings.targetFolder)
+        do {
+            guard let note = try await writer.resolveNote(identifier: id, scope: settings.scope, target: target) else {
+                return Self.reply(error: "No note with that id can be deleted.")
+            }
+            let place = NoteTarget(account: "", folder: note.folder)
+            let preview = "\(note.title)\n\nThe note moves to Recently Deleted, where it can be restored."
+            if let refusal = await consent(.delete, target: place, preview: preview, settings, session) { return Self.reply(error: refusal) }
+            try await writer.moveToTrash(note)
             return Self.reply(ok: true)
         } catch {
             return failureReply(error)

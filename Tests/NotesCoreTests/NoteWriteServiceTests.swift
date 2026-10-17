@@ -30,6 +30,14 @@ final class FakeWriter: NoteWriter, @unchecked Sendable {
         return resolved
     }
 
+    private var trashed: [ResolvedNote] = []
+    var trashCalls: [ResolvedNote] { lock.withLock { trashed } }
+
+    func moveToTrash(_ note: ResolvedNote) async throws {
+        if let failure { throw failure }
+        lock.withLock { trashed.append(note) }
+    }
+
     func replaceBody(of note: ResolvedNote, with html: String) async throws {
         if let failure { throw failure }
         lock.withLock { edits.append((note, html)) }
