@@ -125,7 +125,7 @@ final class VimController {
         let keyCode = event.keyCode
         if type == .keyUp { return swallowed.remove(keyCode) == nil }
         guard active || unsupported, NSApp.keyWindow == nil, !claimsKey(keyCode) else { return true }
-        if !active, engine.mode == .insert, keyCode != Self.escapeKeyCode { return true }
+        if !active, engine.mode == .insert || engine.mode == .search, keyCode != Self.escapeKeyCode { return true }
         let flags = event.flags
         guard let key = vimKey(
             keyCode: Int(keyCode), shift: flags.contains(.maskShift), control: flags.contains(.maskControl),
@@ -260,7 +260,7 @@ final class VimController {
         if buffer?.caretLine != mismatchLine { mismatchLine = nil }
         active = buffer != nil && mismatchLine == nil
         unsupported = buffer != nil && !active
-        indicator.show(engine.mode, in: state.editorFrame, detail: latencyText)
+        indicator.show(engine.mode, prompt: engine.searchPrompt, in: state.editorFrame, detail: latencyText)
     }
 }
 
@@ -285,13 +285,15 @@ final class ModeIndicator {
         return panel
     }()
 
-    func show(_ mode: VimMode, in frame: CGRect?, detail: String? = nil) {
+    func show(_ mode: VimMode, prompt: String? = nil, in frame: CGRect?, detail: String? = nil) {
         guard let frame, let primary = NSScreen.screens.first else { return hide() }
-        label.stringValue = switch mode {
+        let text = switch mode {
         case .normal: "-- NORMAL --"
         case .insert: "-- INSERT --"
         case .visual: "-- VISUAL --"
+        case .search: "-- SEARCH --"
         }
+        label.stringValue = prompt ?? text
         if let detail { label.stringValue += " " + detail }
         let size = label.fittingSize
         let rect = appKitRect(fromAX: frame, primaryScreenHeight: primary.frame.height)
