@@ -41,6 +41,10 @@ public enum PermissionState: Equatable, Sendable {
     }
 }
 
+public func permissionPollInterval(allGranted: Bool) -> TimeInterval {
+    allGranted ? 5 : 1
+}
+
 public enum NotesDatabase {
     public static var path: String {
         FileManager.default.homeDirectoryForCurrentUser

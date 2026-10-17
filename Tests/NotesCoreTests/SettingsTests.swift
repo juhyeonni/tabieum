@@ -63,3 +63,8 @@ private func freshSuite() -> UserDefaults {
     toggles.searchShortcut = .default
     #expect(FeatureToggles(defaults: defaults).searchShortcut.display == "⌃⌥⌘N")
 }
+
+@Test func permissionPollInterval() {
+    #expect(permissionPollInterval(allGranted: false) == 1)
+    #expect(permissionPollInterval(allGranted: true) == 5)
+}

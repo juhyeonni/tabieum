@@ -8,6 +8,8 @@ final class PermissionStatus: ObservableObject {
     @Published private(set) var states: [Permission: PermissionState] = [:]
     private var timer: Timer?
     private var refreshing = false
+    private var polling = false
+    private var timerInterval: TimeInterval = 0
 
     var allGranted: Bool { Permission.allCases.allSatisfy { states[$0] == .granted } }
 
@@ -18,6 +20,7 @@ final class PermissionStatus: ObservableObject {
         states[.accessibility] = AXIsProcessTrusted() ? .granted : .notGranted
         states[.fullDiskAccess] = PermissionState(fullDiskAccessProbe: NotesDatabase.path)
         states[.automation] = await Task.detached { PermissionState(automationStatus: automationStatus(ask: false)) }.value
+        schedule()
     }
 
     func request(_ permission: Permission) {
@@ -37,11 +40,18 @@ final class PermissionStatus: ObservableObject {
     }
 
     func setPolling(_ on: Bool) {
-        guard on != (timer != nil) else { return }
+        polling = on
+        schedule()
+    }
+
+    private func schedule() {
+        let interval = polling ? permissionPollInterval(allGranted: allGranted) : 0
+        guard interval != timerInterval else { return }
         timer?.invalidate()
         timer = nil
-        guard on else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        timerInterval = interval
+        guard polling else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refresh() }
         }
     }
