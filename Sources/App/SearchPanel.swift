@@ -70,7 +70,7 @@ final class SearchPanel {
         panel.contentView = NSHostingView(rootView: SearchView(model: model, open: { [weak self] in self?.open($0) },
                                                                close: { [weak self] in self?.close() }))
         panel.center()
-        NSApp.activate()
+        NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
     }
 

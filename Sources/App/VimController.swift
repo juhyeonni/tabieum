@@ -375,7 +375,7 @@ final class SearchInput: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         let rect = appKitRect(fromAX: frame, primaryScreenHeight: primary.frame.height)
         panel.setContentSize(panel.contentView?.fittingSize ?? .zero)
         panel.setFrameOrigin(CGPoint(x: rect.minX + 8, y: rect.minY + 8))
-        NSApp.activate()
+        NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
     }
