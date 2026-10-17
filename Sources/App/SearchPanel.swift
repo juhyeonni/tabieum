@@ -8,10 +8,12 @@ final class SearchModel: ObservableObject {
     @Published private(set) var hits: [SearchResult] = []
     @Published var selection = 0
     private let indexURL: URL
+    private let embedder: @MainActor () -> Embedder?
     private var generation = 0
 
-    init(indexURL: URL) {
+    init(indexURL: URL, embedder: @escaping @MainActor () -> Embedder?) {
         self.indexURL = indexURL
+        self.embedder = embedder
     }
 
     func move(_ delta: Int) {
@@ -21,13 +23,17 @@ final class SearchModel: ObservableObject {
 
     private func run() {
         generation += 1
-        let current = generation, text = query, url = indexURL
+        let current = generation, text = query, url = indexURL, embedder = embedder()
         guard !text.allSatisfy(\.isWhitespace) else {
             hits = []
             return
         }
         Task.detached {
-            let found = (try? SearchIndex(url: url, readOnly: true).search(text, limit: 50)) ?? []
+            if embedder != nil {
+                try? await Task.sleep(for: .milliseconds(150))
+                guard await MainActor.run(body: { current == self.generation }) else { return }
+            }
+            let found = (try? SearchIndex(url: url, readOnly: true).panelSearch(text, embedder: embedder, limit: 50)) ?? []
             await MainActor.run {
                 guard current == self.generation else { return }
                 self.hits = found
@@ -49,6 +55,7 @@ private final class FloatingPanel: NSPanel {
 @MainActor
 final class SearchPanel {
     private let indexURL: URL
+    private let embedder: @MainActor () -> Embedder?
     private lazy var panel: FloatingPanel = {
         let panel = FloatingPanel(contentRect: NSRect(x: 0, y: 0, width: 640, height: 420),
                                   styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
@@ -61,12 +68,13 @@ final class SearchPanel {
         return panel
     }()
 
-    init(indexURL: URL) {
+    init(indexURL: URL, embedder: @escaping @MainActor () -> Embedder?) {
         self.indexURL = indexURL
+        self.embedder = embedder
     }
 
     func show() {
-        let model = SearchModel(indexURL: indexURL)
+        let model = SearchModel(indexURL: indexURL, embedder: embedder)
         panel.contentView = NSHostingView(rootView: SearchView(model: model, open: { [weak self] in self?.open($0) },
                                                                close: { [weak self] in self?.close() }))
         panel.center()

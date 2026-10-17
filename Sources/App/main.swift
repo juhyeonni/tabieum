@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let modelInstall = ModelInstall()
     private var backlinksPanel: BacklinksPanel?
     private var searchPanel: SearchPanel?
+    private let panelEmbedder = ConfiguredEmbedder()
     private lazy var searchShortcut = ShortcutController(
         toggles: toggles, title: "Search shortcut", id: 1, keyPath: \.searchShortcut) { [weak self] in self?.searchPanel?.show() }
     private lazy var copyMarkdownShortcut = ShortcutController(
@@ -92,7 +93,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             service.start()
             indexService = service
             if toggles.embeddingModel == .e5Small { installModel() }
-            searchPanel = SearchPanel(indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier))
+            searchPanel = SearchPanel(indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier)) { [weak self] in
+                guard let self, toggles.ragEnabled, toggles.semanticPanelSearch else { return nil }
+                return panelEmbedder
+            }
             backlinksPanel = BacklinksPanel(indexURL: indexURL)
         }
         _ = (searchShortcut, copyMarkdownShortcut, copyLinkShortcut)

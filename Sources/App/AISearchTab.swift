@@ -86,6 +86,10 @@ struct AISearchTab: View {
                     Text("tabieum-e5-small-coreml (\(Self.downloadSize) download)").tag(EmbeddingModel.e5Small)
                 }
                 modelStatus
+                Toggle("Also search by meaning in the search panel", isOn: $toggles.semanticPanelSearch)
+                    .disabled(!toggles.ragEnabled)
+                Text("The search panel then finds notes by meaning, not only by words. It is a little slower than word search.")
+                    .font(.callout).foregroundStyle(.secondary)
             }
             Card {
                 Toggle("AI agents (MCP)", isOn: $toggles.mcpEnabled)

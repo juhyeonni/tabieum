@@ -350,6 +350,12 @@ extension SearchIndex {
         return results
     }
 
+    /// What the search panel lists: the full-text hits, or the hybrid order when an embedder is given.
+    public func panelSearch(_ query: String, embedder: Embedder?, limit: Int = 50) throws -> [SearchResult] {
+        guard let embedder else { return try search(query, limit: limit) }
+        return try hybridSearch(query, embedder: embedder, limit: limit).map(\.note)
+    }
+
     private func noteResult(_ id: String, snippet: String) throws -> SearchResult? {
         try db.rows("""
             SELECT n.id, f.title, f.folder, n.modified, f.owner FROM notes n JOIN notes_fts f ON f.rowid = n.rowid WHERE n.id = ?1
