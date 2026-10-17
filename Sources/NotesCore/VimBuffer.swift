@@ -6,6 +6,7 @@ public enum VimAction: Equatable, Sendable {
     case insert(String, at: Int)
     case undo
     case redo
+    case indent(NSRange, outdent: Bool)
 }
 
 /// A text snapshot with its selection, both in UTF-16 units as AX reports them.
@@ -31,7 +32,7 @@ public struct VimBuffer: Equatable, Sendable {
         case .insert(let string, let offset):
             text = (text as NSString).replacingCharacters(in: NSRange(location: offset, length: 0), with: string)
             selection = NSRange(location: offset + string.utf16.count, length: 0)
-        case .undo, .redo:
+        case .undo, .redo, .indent:
             break
         }
     }
