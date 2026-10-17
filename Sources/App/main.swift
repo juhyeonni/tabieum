@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let embedding = EmbeddingState()
     private var backlinksPanel: BacklinksPanel?
     private var searchPanel: SearchPanel?
+    private var writeServer: WriteSocketServer?
     private lazy var searchShortcut = ShortcutController(
         toggles: toggles, title: "Search shortcut", id: 1, keyPath: \.searchShortcut) { [weak self] in self?.searchPanel?.show() }
     private lazy var copyMarkdownShortcut = ShortcutController(
@@ -91,6 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             indexService = service
             searchPanel = SearchPanel(indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier))
             backlinksPanel = BacklinksPanel(indexURL: indexURL)
+            startWriteServer(bundleIdentifier: bundleIdentifier)
         }
         _ = (searchShortcut, copyMarkdownShortcut, copyLinkShortcut)
 
@@ -98,6 +100,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             await status.refresh()
             if !status.allGranted { showOnboarding() }
         }
+    }
+
+    private func startWriteServer(bundleIdentifier: String) {
+        let service = NoteWriteService(
+            settings: { WriteSettings(defaults: .standard) }, writer: AppleScriptNotesWriter(), confirmer: AlertConfirmer(),
+            productName: ProductInfo.main?.name ?? "NoteKit")
+        let server = WriteSocketServer(path: NoteWriteService.socketURL(bundleIdentifier: bundleIdentifier), service: service)
+        do {
+            try server.start()
+            writeServer = server
+        } catch {
+            NSLog("Could not start the write socket: \(error)")
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        writeServer?.stop()
     }
 
     @objc private func showSettings() {

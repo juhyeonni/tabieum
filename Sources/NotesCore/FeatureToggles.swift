@@ -11,6 +11,7 @@ public final class FeatureToggles: ObservableObject {
     @Published public var ragEnabled: Bool { didSet { defaults.set(ragEnabled, forKey: "ragEnabled") } }
     @Published public var mcpEnabled: Bool { didSet { defaults.set(mcpEnabled, forKey: "mcpEnabled") } }
     @Published public var aiEnabled: Bool { didSet { defaults.set(aiEnabled, forKey: "aiEnabled") } }
+    @Published public var write: WriteSettings { didSet { write.save(to: defaults) } }
     @Published public var aiShortcut: HotKey {
         didSet {
             defaults.set(Int(aiShortcut.keyCode), forKey: "aiShortcutKeyCode")
@@ -66,6 +67,7 @@ public final class FeatureToggles: ObservableObject {
         ragEnabled = defaults.bool(forKey: "ragEnabled")
         mcpEnabled = defaults.bool(forKey: "mcpEnabled")
         aiEnabled = defaults.bool(forKey: "aiEnabled")
+        write = WriteSettings(defaults: defaults)
         let stored = HotKey(keyCode: UInt16(defaults.integer(forKey: "aiShortcutKeyCode")),
                             modifiers: CGEventFlags(rawValue: UInt64(defaults.integer(forKey: "aiShortcutModifiers"))),
                             key: defaults.string(forKey: "aiShortcutKey") ?? "")
