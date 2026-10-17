@@ -211,10 +211,11 @@ final class VimController {
             try? await Task.sleep(for: .milliseconds(30))
             return true
         case .undo, .redo:
-            let before = tracker.textLength
+            let before = tracker.liveText
             post(keyCode: 6, flags: action == .redo ? [.maskCommand, .maskShift] : .maskCommand)
-            // ponytail: an undo that keeps the length just waits out the timeout; compare text if that feels slow
-            _ = await wait(attempts: 150) { $0 != before }
+            _ = await waitForChange(
+                from: before, attempts: 150, read: { tracker.liveText },
+                sleep: { try? await Task.sleep(for: .milliseconds(2)) })
             return true
         }
     }

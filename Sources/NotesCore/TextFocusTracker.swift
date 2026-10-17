@@ -112,6 +112,12 @@ public final class TextFocusTracker {
         return isFocused ? source.textLength : nil
     }
 
+    /// Always read live, like `textLength`.
+    public var liveText: String? {
+        cache?.text = nil
+        return isFocused ? source.text : nil
+    }
+
     public func buffer() -> VimBuffer? {
         guard isFocused, let text, let selection = source.selectedRange() else { return nil }
         return VimBuffer(text: text, selection: selection, visible: source.visibleRange)
