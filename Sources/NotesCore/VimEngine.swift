@@ -149,7 +149,15 @@ public indirect enum VimCommand: Equatable, Sendable {
     case jumpMark(Character)
     case playMacro(Character)
 
-    var isChange: Bool {
+    public var startsInsert: Bool {
+        switch self {
+        case .counted(let command, _): command.startsInsert
+        case .operate(.change, _), .operateLines(.change), .operateObject(.change, _), .insert: true
+        default: false
+        }
+    }
+
+    public var isChange: Bool {
         switch self {
         case .counted(let command, _): command.isChange
         case .operate(let op, _), .operateLines(let op), .operateObject(let op, _): op != .yank

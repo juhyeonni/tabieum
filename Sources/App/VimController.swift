@@ -65,6 +65,7 @@ final class VimController {
     private var swallowed: Set<Int64> = []
     private var queue: [(command: VimCommand, start: UInt64)] = []
     private var draining = false
+    private var history = HistoryGroups()
     private var latencies = LatencyWindow()
     private var latencyText: String?
     var showsLatency = false {
@@ -184,6 +185,8 @@ final class VimController {
 
     private func run(_ command: VimCommand) async {
         guard let buffer = tracker.buffer() else { return }
+        if await runGroupedHistory(command) { return }
+        history.record(command, text: buffer.text)
         let actions = engine.execute(command, on: buffer)
         var i = 0
         while i < actions.count {
@@ -196,6 +199,21 @@ final class VimController {
             guard ok else { return }
             i += count
         }
+    }
+
+    /// `u` after an insert session undoes the whole session; the next `Ctrl-r` redoes as many steps.
+    private func runGroupedHistory(_ command: VimCommand) async -> Bool {
+        switch history.plan(command) {
+        case .plain:
+            return false
+        case .undoUntil(let text):
+            let steps = await undoUntil(
+                target: text, read: { tracker.liveText }, undo: { _ = await pressHistory(redo: false, count: 1) })
+            history.undone(steps: steps)
+        case .redo(let steps):
+            _ = await pressHistory(redo: true, count: steps)
+        }
+        return true
     }
 
     private func perform(_ action: VimAction) async -> Bool {
