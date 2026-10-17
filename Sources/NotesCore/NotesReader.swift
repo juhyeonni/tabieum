@@ -236,6 +236,14 @@ public final class NotesReader {
         }.first ?? nil
     }
 
+    /// The database key (Z_PK) of the note with this identifier, or nil when there is none.
+    public func noteKey(identifier: String) throws -> Int? {
+        let quoted = "'" + identifier.replacingOccurrences(of: "'", with: "''") + "'"
+        return try query("SELECT Z_PK FROM \(Self.objects) WHERE ZIDENTIFIER = \(quoted) AND Z_ENT = \(noteEntity)") {
+            Int(sqlite3_column_int64($0, 0))
+        }.first
+    }
+
     private func readNotes(where extra: String) throws -> [Note] {
         let title = try mostUsed(titleColumns, entity: noteEntity)
         let created = try mostUsed(creationColumns, entity: noteEntity)

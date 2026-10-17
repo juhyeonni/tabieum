@@ -12,6 +12,7 @@ public struct MCPServer: Sendable {
         case getNote = "get_note"
         case listBacklinks = "list_backlinks"
         case createNote = "create_note"
+        case updateNote = "update_note"
 
         var description: String {
             switch self {
@@ -19,6 +20,7 @@ public struct MCPServer: Sendable {
             case .getNote: "Read one note as Markdown by its id."
             case .listBacklinks: "List the notes that link to one note, by its id."
             case .createNote: "Create a note from a title and a Markdown body. It goes into the folder the owner chose and may need the owner's approval in the app."
+            case .updateNote: "Replace the whole body of an existing note with Markdown. Read the note with get_note first and pass its modified value as expected_modified; the edit is refused if the note changed since. It may need the owner's approval in the app."
             }
         }
 
@@ -34,12 +36,27 @@ public struct MCPServer: Sendable {
                 ["type": "object", "required": ["title", "body"], "properties": [
                     "title": ["type": "string", "minLength": 1],
                     "body": ["type": "string", "description": "Markdown: headings, lists, bold, italic and inline code."]]]
+            case .updateNote:
+                ["type": "object", "required": ["id", "body", "expected_modified"], "properties": [
+                    "id": ["type": "string"],
+                    "body": ["type": "string", "description": "The new whole body as Markdown. Its first line becomes the note's title."],
+                    "expected_modified": ["type": "string", "description": "The modified value get_note returned for this note."]]]
             }
         }
 
         var annotations: [String: Any]? {
             switch self {
             case .createNote: ["readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false]
+            case .updateNote: ["readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false]
+            default: nil
+            }
+        }
+
+        /// The write action a tool performs, nil for the read tools.
+        var writeAction: WriteAction? {
+            switch self {
+            case .createNote: .create
+            case .updateNote: .edit
             default: nil
             }
         }
@@ -131,6 +148,7 @@ public struct MCPServer: Sendable {
             case .getNote: output = try getNote(openIndex(), arguments)
             case .listBacklinks: output = try listBacklinks(openIndex(), arguments)
             case .createNote: output = try createNote(arguments)
+            case .updateNote: output = try updateNote(arguments)
             }
             return content(output, isError: false)
         } catch let failure as ToolFailure {
@@ -142,11 +160,11 @@ public struct MCPServer: Sendable {
 
     /// Why a tool is unavailable, or nil. The read tools are always listed.
     private func refusal(for tool: Tool) -> String? {
-        guard tool == .createNote else { return nil }
+        guard let action = tool.writeAction else { return nil }
         guard isEnabled() else { return "The \"AI agents (MCP)\" option is off. Turn it on in \(serverName) Settings." }
         let settings = writeSettings()
         guard settings.enabled else { return "Writing to Notes is off. Turn it on in \(serverName) Settings." }
-        guard settings.allowedActions.contains(.create) else { return "Creating notes is not allowed in \(serverName) Settings." }
+        guard settings.allowedActions.contains(action) else { return "\(action.rawValue.capitalized) is not allowed in \(serverName) Settings." }
         guard settings.consent != .never else { return "Writing to Notes is set to never allow in \(serverName) Settings." }
         guard writeChannel != nil else { return "This server cannot reach \(serverName)." }
         return nil
@@ -157,13 +175,28 @@ public struct MCPServer: Sendable {
             throw ToolFailure(message: "title must be a non-empty string.")
         }
         guard let body = arguments["body"] as? String else { throw ToolFailure(message: "body must be a string.") }
+        return try askApp(["action": "create", "title": title, "html": NoteHTML.html(fromMarkdown: body)],
+                          success: "Created the note in the target folder.")
+    }
+
+    private func updateNote(_ arguments: [String: Any]) throws -> String {
+        guard let id = arguments["id"] as? String, !id.isEmpty else { throw ToolFailure(message: "id must be a non-empty string.") }
+        guard let body = arguments["body"] as? String else { throw ToolFailure(message: "body must be a string.") }
+        guard let expected = arguments["expected_modified"] as? String, ISO8601DateFormatter().date(from: expected) != nil else {
+            throw ToolFailure(message: "expected_modified must be the ISO 8601 modified value get_note returned.")
+        }
+        return try askApp(["action": "edit", "id": id, "html": NoteHTML.html(fromMarkdown: body), "expected_modified": expected],
+                          success: "Replaced the body of the note.")
+    }
+
+    /// Sends one request to the running app and turns its reply into the tool's result or error.
+    private func askApp(_ request: [String: Any], success: String) throws -> String {
         guard let writeChannel else { throw ToolFailure(message: "This server cannot reach \(serverName).") }
-        let request = Self.json(["action": "create", "title": title, "html": NoteHTML.html(fromMarkdown: body)])
         let reply: String
         do {
-            reply = try writeChannel.send(request)
+            reply = try writeChannel.send(Self.json(request))
         } catch WriteChannelError.noAnswer {
-            throw ToolFailure(message: "\(serverName) did not answer in time. The note may not have been created.")
+            throw ToolFailure(message: "\(serverName) did not answer in time. The change may not have been made.")
         } catch {
             throw ToolFailure(message: "\(serverName) is not running. Open it, then try again.")
         }
@@ -173,7 +206,7 @@ public struct MCPServer: Sendable {
         guard answer["ok"] as? Bool == true else {
             throw ToolFailure(message: answer["error"] as? String ?? "\(serverName) refused the request.")
         }
-        return "Created the note in the target folder."
+        return success
     }
 
     private func openIndex() throws -> SearchIndex {
