@@ -277,8 +277,10 @@ final class VimController {
 
     private func openSearch(forward: Bool) {
         guard let editorFrame else { return }
+        indicator.hide()
         searchInput.show(forward: forward, in: editorFrame) { [weak self] pattern in
             self?.closeSearch(pattern, forward: forward)
+            self?.refresh(self?.tracker.state ?? .notFocused)
         }
     }
 
