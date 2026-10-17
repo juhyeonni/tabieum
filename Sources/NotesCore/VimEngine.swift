@@ -21,7 +21,7 @@ public struct VimKey: Equatable, Sendable {
 }
 
 public enum VimMode: Equatable, Sendable {
-    case normal, insert, visual
+    case normal, insert, visual, search
 }
 
 public enum VimMotion: Equatable, Sendable {
@@ -89,6 +89,9 @@ public indirect enum VimCommand: Equatable, Sendable {
     case exitInsert(deletingJ: Bool)
     case enterVisual, exitVisual
     case deleteSelection, yankSelection
+    case search(String, forward: Bool)
+    case searchNext(reverse: Bool)
+    case searchWord(forward: Bool)
 }
 
 public enum VimDecision: Equatable, Sendable {
@@ -116,6 +119,14 @@ public struct VimEngine: Sendable {
     private var goal: (offset: Int, column: Int)?
     private var visualAnchor: Int?
     private var visualCursor = 0
+    private var searchInput = ""
+    private var searchForward = true
+    private var lastSearch: (pattern: String, forward: Bool)?
+
+    /// What the command line shows while a search pattern is typed.
+    public var searchPrompt: String? {
+        mode == .search ? (searchForward ? "/" : "?") + searchInput : nil
+    }
 
     public init(mode: VimMode = .normal, jkEnabled: Bool = false) {
         self.mode = mode
@@ -125,7 +136,37 @@ public struct VimEngine: Sendable {
     // MARK: - feed
 
     public mutating func feed(_ key: VimKey, at time: TimeInterval) -> VimDecision {
-        mode == .insert ? feedInsert(key, at: time) : feedCommand(key)
+        switch mode {
+        case .insert: feedInsert(key, at: time)
+        case .search: feedSearch(key)
+        default: feedCommand(key)
+        }
+    }
+
+    private mutating func feedSearch(_ key: VimKey) -> VimDecision {
+        if key.command { return .passThrough }
+        if key.isEscape {
+            mode = .normal
+            searchInput = ""
+            return .consume(.none)
+        }
+        guard key.isPlain else { return .consume(.none) }
+        switch key.character {
+        case "\n":
+            let pattern = searchInput.isEmpty ? lastSearch?.pattern : searchInput
+            mode = .normal
+            searchInput = ""
+            guard let pattern else { return .consume(.none) }
+            lastSearch = (pattern, searchForward)
+            return .consume(.search(pattern, forward: searchForward))
+        case "\u{7F}":
+            if searchInput.isEmpty { mode = .normal } else { searchInput.removeLast() }
+        case let c where c.unicodeScalars.allSatisfy({ ![.control, .privateUse].contains($0.properties.generalCategory) }):
+            searchInput.append(c)
+        default:
+            break
+        }
+        return .consume(.none)
     }
 
     private mutating func feedInsert(_ key: VimKey, at time: TimeInterval) -> VimDecision {
@@ -229,6 +270,14 @@ public struct VimEngine: Sendable {
         case "D": return finish(.operate(.delete, .lineEnd))
         case "C": mode = .insert; return finish(.operate(.change, .lineEnd))
         case "u": reset(); return .undo
+        case "/", "?":
+            reset()
+            mode = .search
+            searchForward = c == "/"
+            searchInput = ""
+            return .none
+        case "n", "N": reset(); return .searchNext(reverse: c == "N")
+        case "*", "#": reset(); return .searchWord(forward: c == "*")
         case "v": reset(); mode = .visual; return .enterVisual
         default: reset(); return .none
         }
@@ -345,6 +394,18 @@ public struct VimEngine: Sendable {
                 self.stepLeft($1, in: $0)
             }
 
+        case .search(let pattern, let forward):
+            return find(pattern, forward, from: cur, buffer, t)
+
+        case .searchNext(let reverse):
+            guard let last = lastSearch else { return [] }
+            return find(last.pattern, last.forward != reverse, from: cur, buffer, t)
+
+        case .searchWord(let forward):
+            guard let word = wordUnder(cur, in: t) else { return [] }
+            lastSearch = (word.text, forward)
+            return find(word.text, forward, from: word.start, buffer, t)
+
         case .enterVisual:
             visualAnchor = t.offsets[cur]
             visualCursor = t.offsets[cur]
@@ -364,6 +425,25 @@ public struct VimEngine: Sendable {
             guard command == .deleteSelection else { return [.select(t.range(lo, lo))] }
             return edit(buffer, .delete(range), cursorAt: range.location)
         }
+    }
+
+    private func find(
+        _ pattern: String, _ forward: Bool, from cur: Int, _ buffer: VimBuffer, _ t: VimText
+    ) -> [VimAction] {
+        guard let range = vimSearch(in: buffer.text, pattern: pattern, from: t.offsets[cur], forward: forward)
+        else { return [] }
+        return [.select(range)]
+    }
+
+    private func wordUnder(_ cur: Int, in t: VimText) -> (text: String, start: Int)? {
+        let end = t.lineEnd(cur)
+        var start = cur
+        while start < end && charClass(t.chars[start]) != .word { start += 1 }
+        guard start < end else { return nil }
+        while start > t.lineStart(cur) && charClass(t.chars[start - 1]) == .word { start -= 1 }
+        var stop = start
+        while stop < end && charClass(t.chars[stop]) == .word { stop += 1 }
+        return (t.string(start, stop), start)
     }
 
     private func visualRange(_ anchor: Int, in t: VimText) -> NSRange {
@@ -634,4 +714,25 @@ public struct VimEngine: Sendable {
         while i + 1 < t.count && charClass(t.chars[i + 1]) == cls { i += 1 }
         return i
     }
+}
+
+/// The next match of `pattern` after UTF-16 offset `offset` (before it, backwards), wrapping at the ends.
+/// Plain text; case-insensitive unless the pattern has an uppercase letter.
+public func vimSearch(in text: String, pattern: String, from offset: Int, forward: Bool) -> NSRange? {
+    guard !pattern.isEmpty else { return nil }
+    let ns = text as NSString
+    let options: NSString.CompareOptions = pattern.contains(where: \.isUppercase) ? [] : [.caseInsensitive]
+    let all = NSRange(location: 0, length: ns.length)
+    func find(_ options: NSString.CompareOptions, in range: NSRange) -> NSRange? {
+        guard range.length > 0 else { return nil }
+        let found = ns.range(of: pattern, options: options, range: range)
+        return found.location == NSNotFound ? nil : found
+    }
+    if forward {
+        let start = min(offset + 1, ns.length)
+        return find(options, in: NSRange(location: start, length: ns.length - start)) ?? find(options, in: all)
+    }
+    let end = min(max(offset - 1 + pattern.utf16.count, 0), ns.length)
+    return find(options.union(.backwards), in: NSRange(location: 0, length: end))
+        ?? find(options.union(.backwards), in: all)
 }
