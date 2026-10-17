@@ -51,7 +51,7 @@ final class SearchPanel {
     private let indexURL: URL
     private lazy var panel: FloatingPanel = {
         let panel = FloatingPanel(contentRect: NSRect(x: 0, y: 0, width: 640, height: 420),
-                                  styleMask: [.borderless], backing: .buffered, defer: true)
+                                  styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         panel.level = .floating
         panel.isReleasedWhenClosed = false
         panel.hasShadow = true
@@ -70,7 +70,6 @@ final class SearchPanel {
         panel.contentView = NSHostingView(rootView: SearchView(model: model, open: { [weak self] in self?.open($0) },
                                                                close: { [weak self] in self?.close() }))
         panel.center()
-        NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
     }
 

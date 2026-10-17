@@ -350,7 +350,7 @@ final class SearchInput: NSObject, NSTextFieldDelegate, NSWindowDelegate {
     private let field = NSTextField()
     private var done: ((String?) -> Void)?
     private lazy var panel: KeyPanel = {
-        let panel = KeyPanel(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: true)
+        let panel = KeyPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         panel.level = .floating
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
@@ -374,7 +374,6 @@ final class SearchInput: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         let rect = appKitRect(fromAX: frame, primaryScreenHeight: primary.frame.height)
         panel.setContentSize(panel.contentView?.fittingSize ?? .zero)
         panel.setFrameOrigin(CGPoint(x: rect.minX + 8, y: rect.minY + 8))
-        NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
     }
