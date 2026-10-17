@@ -113,6 +113,7 @@ final class VimController {
         unsupported = false
         swallowed = []
         queue = []
+        engine.searchStatus = nil
         indicator.hide()
         log.notice("Vim off: event tap removed")
     }
@@ -274,7 +275,9 @@ final class VimController {
         if searchOpen {
             indicator.hide()
         } else {
-            indicator.show(engine.mode, in: state.editorFrame, detail: latencyText)
+            indicator.show(
+                engine.mode, in: state.editorFrame,
+                detail: [engine.searchStatus, latencyText].compactMap { $0 }.joined(separator: " "))
         }
     }
 

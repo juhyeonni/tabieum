@@ -98,3 +98,29 @@ private func search(_ marked: String, _ pattern: String, forward: Bool = true) -
     #expect(search("|가 나다 가", "나다").marked == "가 [나다] 가")
     #expect(search("|오늘 감사 합니다", "감사").marked == "오늘 [감사] 합니다")
 }
+
+@Test func statusShowsPrefixPatternAndPosition() {
+    let text = "good good good good good"
+    #expect(vimSearchStatus(in: text, pattern: "good", forward: true, current: NSRange(location: 5, length: 4)) == "/good  2/5")
+    #expect(vimSearchStatus(in: text, pattern: "good", forward: false, current: NSRange(location: 5, length: 4)) == "?good  2/5")
+}
+
+@Test func statusWithoutMatch() {
+    #expect(vimSearchStatus(in: "abc", pattern: "zz", forward: true, current: nil) == "/zz  no match")
+}
+
+@Test func nShiftNStarAndHashUpdateTheStatus() {
+    var h = search("|a foo b foo c foo", "foo")
+    #expect(h.engine.searchStatus == "/foo  1/3")
+    h.type("n")
+    #expect(h.engine.searchStatus == "/foo  2/3")
+    h.type("N")
+    #expect(h.engine.searchStatus == "?foo  1/3")
+    h.type("*")
+    #expect(h.engine.searchStatus == "/foo  2/3")
+    var b = Harness("x |bar bar")
+    b.type("#")
+    #expect(b.engine.searchStatus == "?bar  2/2")
+    _ = b.press(VimKey("/"))
+    #expect(b.engine.searchStatus == nil)
+}
