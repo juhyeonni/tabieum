@@ -28,11 +28,7 @@ public func vimKey(
     let character: Character?
     if keyCode == escapeKeyCode {
         character = "\u{1B}"
-    } else if mode == .search, keyCode == 36 {
-        character = "\n"
-    } else if mode == .search, keyCode == 51 {
-        character = "\u{7F}"
-    } else if mode == .insert || mode == .search {
+    } else if mode == .insert {
         character = characters.first
     } else {
         character = usANSI[keyCode].map { shift ? $0.1 : $0.0 }

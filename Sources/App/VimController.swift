@@ -44,6 +44,8 @@ final class VimController {
 
     private let tracker: TextFocusTracker
     private let indicator = ModeIndicator()
+    private let searchInput = SearchInput()
+    private var editorFrame: CGRect?
     private var engine = VimEngine()
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -125,7 +127,7 @@ final class VimController {
         let keyCode = event.keyCode
         if type == .keyUp { return swallowed.remove(keyCode) == nil }
         guard active || unsupported, NSApp.keyWindow == nil, !claimsKey(keyCode) else { return true }
-        if !active, engine.mode == .insert || engine.mode == .search, keyCode != Self.escapeKeyCode { return true }
+        if !active, engine.mode == .insert, keyCode != Self.escapeKeyCode { return true }
         let flags = event.flags
         guard let key = vimKey(
             keyCode: Int(keyCode), shift: flags.contains(.maskShift), control: flags.contains(.maskControl),
@@ -133,7 +135,9 @@ final class VimController {
         ) else { return true }
         guard case .consume(let command) = engine.feed(key, at: event.time) else { return true }
         swallowed.insert(keyCode)
-        if active {
+        if case .promptSearch(let forward) = command {
+            if active { openSearch(forward: forward) }
+        } else if active {
             enqueue(command, start: DispatchTime.now().uptimeNanoseconds)
         } else if let arrow = fallbackArrowKeyCode(for: command) {
             post(keyCode: CGKeyCode(arrow))
@@ -265,7 +269,29 @@ final class VimController {
         if buffer?.caretLine != mismatchLine { mismatchLine = nil }
         active = buffer != nil && mismatchLine == nil
         unsupported = buffer != nil && !active
-        indicator.show(engine.mode, prompt: engine.searchPrompt, in: state.editorFrame, detail: latencyText)
+        editorFrame = state.editorFrame
+        indicator.show(engine.mode, in: state.editorFrame, detail: latencyText)
+    }
+
+    // MARK: - search
+
+    private func openSearch(forward: Bool) {
+        guard let editorFrame else { return }
+        searchInput.show(forward: forward, in: editorFrame) { [weak self] pattern in
+            self?.closeSearch(pattern, forward: forward)
+        }
+    }
+
+    private func closeSearch(_ pattern: String?, forward: Bool) {
+        guard let pid = NotesControl.pid else { return }
+        Task {
+            NSRunningApplication(processIdentifier: pid)?.activate()
+            for _ in 0..<20 where NSWorkspace.shared.frontmostApplication?.processIdentifier != pid {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            guard let pattern else { return }
+            enqueue(.search(pattern, forward: forward), start: DispatchTime.now().uptimeNanoseconds)
+        }
     }
 }
 
@@ -290,16 +316,15 @@ final class ModeIndicator {
         return panel
     }()
 
-    func show(_ mode: VimMode, prompt: String? = nil, in frame: CGRect?, detail: String? = nil) {
+    func show(_ mode: VimMode, in frame: CGRect?, detail: String? = nil) {
         guard let frame, let primary = NSScreen.screens.first else { return hide() }
         let text = switch mode {
         case .normal: "-- NORMAL --"
         case .insert: "-- INSERT --"
         case .visual: "-- VISUAL --"
         case .visualLine: "-- VISUAL LINE --"
-        case .search: "-- SEARCH --"
         }
-        label.stringValue = prompt ?? text
+        label.stringValue = text
         if let detail { label.stringValue += " " + detail }
         let size = label.fittingSize
         let rect = appKitRect(fromAX: frame, primaryScreenHeight: primary.frame.height)
@@ -311,5 +336,67 @@ final class ModeIndicator {
 
     func hide() {
         panel.orderOut(nil)
+    }
+}
+
+/// A small text input in the indicator's corner for a `/` or `?` pattern: a real field, so the input method can compose.
+@MainActor
+final class SearchInput: NSObject, NSTextFieldDelegate, NSWindowDelegate {
+    private final class KeyPanel: NSPanel {
+        override var canBecomeKey: Bool { true }
+    }
+
+    private let prefix = NSTextField(labelWithString: "/")
+    private let field = NSTextField()
+    private var done: ((String?) -> Void)?
+    private lazy var panel: KeyPanel = {
+        let panel = KeyPanel(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: true)
+        panel.level = .floating
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.delegate = self
+        prefix.font = .monospacedSystemFont(ofSize: 11, weight: .semibold)
+        field.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        field.delegate = self
+        field.focusRingType = .none
+        let stack = NSStackView(views: [prefix, field])
+        stack.edgeInsets = NSEdgeInsets(top: 3, left: 6, bottom: 3, right: 6)
+        field.widthAnchor.constraint(equalToConstant: 240).isActive = true
+        panel.contentView = stack
+        return panel
+    }()
+
+    func show(forward: Bool, in frame: CGRect, done: @escaping (String?) -> Void) {
+        guard let primary = NSScreen.screens.first else { return }
+        self.done = done
+        prefix.stringValue = forward ? "/" : "?"
+        field.stringValue = ""
+        let rect = appKitRect(fromAX: frame, primaryScreenHeight: primary.frame.height)
+        panel.setContentSize(panel.contentView?.fittingSize ?? .zero)
+        panel.setFrameOrigin(CGPoint(x: rect.minX + 8, y: rect.minY + 8))
+        NSApp.activate()
+        panel.makeKeyAndOrderFront(nil)
+        panel.makeFirstResponder(field)
+    }
+
+    private func finish(_ pattern: String?) {
+        let done = done
+        self.done = nil
+        panel.orderOut(nil)
+        done?(pattern)
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        switch selector {
+        case #selector(NSResponder.insertNewline(_:)): finish(field.stringValue)
+        case #selector(NSResponder.cancelOperation(_:)): finish(nil)
+        default: return false
+        }
+        return true
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        guard done != nil else { return }
+        finish(nil)
     }
 }

@@ -21,7 +21,7 @@ public struct VimKey: Equatable, Sendable {
 }
 
 public enum VimMode: Equatable, Sendable {
-    case normal, insert, visual, visualLine, search
+    case normal, insert, visual, visualLine
 }
 
 public struct VimFind: Equatable, Sendable {
@@ -136,6 +136,7 @@ public indirect enum VimCommand: Equatable, Sendable {
     case enterVisual, enterVisualLine, exitVisual, swapVisualEnds, joinSelection
     case indentSelection(outdent: Bool)
     case deleteSelection, yankSelection
+    case promptSearch(forward: Bool)
     case search(String, forward: Bool)
     case searchNext(reverse: Bool)
     case searchWord(forward: Bool)
@@ -180,8 +181,6 @@ public struct VimEngine: Sendable {
     private var visualAnchor: Int?
     private var visualCursor = 0
     private var visualLinewise = false
-    private var searchInput = ""
-    private var searchForward = true
     private var lastSearch: (pattern: String, forward: Bool)?
     private var lastFind: VimFind?
     private var visible: NSRange?
@@ -195,11 +194,6 @@ public struct VimEngine: Sendable {
     private var playDepth = 0
 
     public var isRecording: Bool { recording != nil }
-
-    /// What the command line shows while a search pattern is typed.
-    public var searchPrompt: String? {
-        mode == .search ? (searchForward ? "/" : "?") + searchInput : nil
-    }
 
     public init(mode: VimMode = .normal, jkEnabled: Bool = false) {
         self.mode = mode
@@ -245,35 +239,8 @@ public struct VimEngine: Sendable {
     private mutating func dispatch(_ key: VimKey, at time: TimeInterval) -> VimDecision {
         switch mode {
         case .insert: feedInsert(key, at: time)
-        case .search: feedSearch(key)
         default: feedCommand(key)
         }
-    }
-
-    private mutating func feedSearch(_ key: VimKey) -> VimDecision {
-        if key.command { return .passThrough }
-        if key.isEscape {
-            mode = .normal
-            searchInput = ""
-            return .consume(.none)
-        }
-        guard key.isPlain else { return .consume(.none) }
-        switch key.character {
-        case "\n":
-            let pattern = searchInput.isEmpty ? lastSearch?.pattern : searchInput
-            mode = .normal
-            searchInput = ""
-            guard let pattern else { return .consume(.none) }
-            lastSearch = (pattern, searchForward)
-            return .consume(.search(pattern, forward: searchForward))
-        case "\u{7F}":
-            if searchInput.isEmpty { mode = .normal } else { searchInput.removeLast() }
-        case let c where c.unicodeScalars.allSatisfy({ ![.control, .privateUse].contains($0.properties.generalCategory) }):
-            searchInput.append(c)
-        default:
-            break
-        }
-        return .consume(.none)
     }
 
     private mutating func feedInsert(_ key: VimKey, at time: TimeInterval) -> VimDecision {
@@ -414,10 +381,7 @@ public struct VimEngine: Sendable {
         case "u": reset(); return .undo
         case "/", "?":
             reset()
-            mode = .search
-            searchForward = c == "/"
-            searchInput = ""
-            return .none
+            return .promptSearch(forward: c == "/")
         case "n", "N": reset(); return .searchNext(reverse: c == "N")
         case "*", "#": reset(); return .searchWord(forward: c == "*")
         case "v": reset(); mode = .visual; return .enterVisual
@@ -645,7 +609,12 @@ public struct VimEngine: Sendable {
                 self.stepLeft($1, in: $0)
             }
 
-        case .search(let pattern, let forward):
+        case .promptSearch:
+            return []
+
+        case .search(let typed, let forward):
+            guard let pattern = typed.isEmpty ? lastSearch?.pattern : typed else { return [] }
+            lastSearch = (pattern, forward)
             return find(pattern, forward, from: cur, buffer, t)
 
         case .searchNext(let reverse):

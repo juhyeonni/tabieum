@@ -2,13 +2,13 @@ import Foundation
 import Testing
 @testable import NotesCore
 
-private let enter = VimKey("\n")
-private let backspace = VimKey("\u{7F}")
+private func find(_ h: inout Harness, _ pattern: String, forward: Bool = true) {
+    h.buffer.apply(h.engine.execute(.search(pattern, forward: forward), on: h.buffer))
+}
 
-private func search(_ marked: String, _ keys: String) -> Harness {
+private func search(_ marked: String, _ pattern: String, forward: Bool = true) -> Harness {
     var h = Harness(marked)
-    h.type(keys)
-    h.press(enter)
+    find(&h, pattern, forward: forward)
     return h
 }
 
@@ -31,14 +31,14 @@ private func search(_ marked: String, _ keys: String) -> Harness {
 }
 
 // AC3
-@Test func slashSelectsNextAndQuestionMarkPrevious() {
-    #expect(search("|a foo b foo", "/foo").marked == "a [foo] b foo")
-    #expect(search("a foo b |foo", "?foo").marked == "a [foo] b foo")
+@Test func searchCommandSelectsNextAndPrevious() {
+    #expect(search("|a foo b foo", "foo").marked == "a [foo] b foo")
+    #expect(search("a foo b |foo", "foo", forward: false).marked == "a [foo] b foo")
 }
 
 // AC4
 @Test func nAndShiftNRepeat() {
-    var h = search("|a foo b foo c foo", "/foo")
+    var h = search("|a foo b foo c foo", "foo")
     h.type("n")
     #expect(h.marked == "a foo b [foo] c foo")
     h.type("n")
@@ -48,7 +48,7 @@ private func search(_ marked: String, _ keys: String) -> Harness {
     h.type("N")
     #expect(h.marked == "a foo b foo c [foo]")
 
-    var back = search("a foo b foo c |foo", "?foo")
+    var back = search("a foo b foo c |foo", "foo", forward: false)
     #expect(back.marked == "a foo b [foo] c foo")
     back.type("n")
     #expect(back.marked == "a [foo] b foo c foo")
@@ -65,39 +65,36 @@ private func search(_ marked: String, _ keys: String) -> Harness {
 }
 
 // AC6
-@Test func escapeBackspaceAndEmptyEnter() {
+@Test func slashAndQuestionMarkAskForTheInput() {
     var h = Harness("a |foo b foo")
-    h.type("/fo")
-    #expect(h.engine.searchPrompt == "/fo")
-    h.press(.escape)
-    #expect(h.marked == "a |foo b foo")
+    #expect(h.press(VimKey("/")) == .consume(.promptSearch(forward: true)))
+    #expect(h.press(VimKey("?")) == .consume(.promptSearch(forward: false)))
     #expect(h.mode == .normal)
-    #expect(h.engine.searchPrompt == nil)
+    #expect(h.marked == "a |foo b foo")
+    h.type("x")
+    #expect(h.buffer.text == "a oo b foo")
+}
 
-    h.type("/fx")
-    h.press(backspace)
-    h.type("o")
-    #expect(h.engine.searchPrompt == "/fo")
-    h.press(enter)
+@Test func emptyPatternRepeatsTheLastSearch() {
+    var h = search("a |foo b foo", "fo")
     #expect(h.marked == "a foo b [fo]o")
-
-    h.type("/")
-    h.press(enter)
+    find(&h, "")
     #expect(h.marked == "a [fo]o b foo")
+    var none = Harness("|a foo")
+    find(&none, "")
+    #expect(none.marked == "|a foo")
 }
 
 // AC7
 @Test func searchNeverChangesTheText() {
-    var h = search("|a foo b foo", "/foo")
-    h.type("n*#N?a")
-    h.press(enter)
+    var h = search("|a foo b foo", "foo")
+    h.type("n*#N")
+    find(&h, "a")
     #expect(h.buffer.text == "a foo b foo")
 }
 
 // AC8
-@Test func nonLatinPatternIsAccepted() {
-    #expect(search("|가 나다 가", "/나다").marked == "가 [나다] 가")
-    #expect(vimKey(keyCode: 0, shift: false, control: false, command: false, characters: "ㅁ", mode: .search) == VimKey("ㅁ"))
-    #expect(vimKey(keyCode: 36, shift: false, control: false, command: false, characters: "\r", mode: .search) == enter)
-    #expect(vimKey(keyCode: 51, shift: false, control: false, command: false, characters: "\u{7F}", mode: .search) == backspace)
+@Test func koreanPatternFindsKoreanText() {
+    #expect(search("|가 나다 가", "나다").marked == "가 [나다] 가")
+    #expect(search("|오늘 감사 합니다", "감사").marked == "오늘 [감사] 합니다")
 }
