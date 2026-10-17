@@ -83,7 +83,7 @@ struct AISearchTab: View {
                 Text(model.ragStatus).font(.callout).foregroundStyle(.secondary)
                 Picker("Embedding model", selection: Binding(get: { toggles.embeddingModel }, set: chooseModel)) {
                     Text("Apple (built in)").tag(EmbeddingModel.apple)
-                    Text("multilingual-e5-small (\(Self.downloadSize) download)").tag(EmbeddingModel.e5Small)
+                    Text("tabieum-e5-small-coreml (\(Self.downloadSize) download)").tag(EmbeddingModel.e5Small)
                 }
                 modelStatus
             }

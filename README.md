@@ -60,7 +60,7 @@ With the default settings tabieum makes no network request. It never checks for 
 | You choose **Check for Updates…** in the menu | One request for the latest release | `api.github.com` |
 | You turn on AI and use it | The text you selected or the note, plus what "Ask my notes" finds | The server you set in Settings > AI Assistant |
 | You turn on semantic search | macOS downloads its on-device embedding model once. Your notes do not leave the Mac. | Apple, by macOS |
-| You choose the multilingual-e5-small model for semantic search | The app downloads the model once (about 217 MB, checked against a SHA-256 pinned in the app). No note text is sent. | `huggingface.co` |
+| You choose the tabieum-e5-small-coreml model for semantic search | The app downloads the model once (about 217 MB, checked against a SHA-256 pinned in the app). No note text is sent. | `huggingface.co` |
 
 - **AI is off until you set it up.** A server that is not on this Mac must be allowed once before any note text is sent to it, and you can revoke that in Settings. The API key is kept in the macOS Keychain.
 - **Search index:** tabieum keeps a full-text index of your unlocked notes in `~/Library/Application Support/dev.juhyeonni.tabieum/index.sqlite`. It holds a plain-text copy of each note's title, folder and Markdown body, outside the Notes container, so any process running as you can read it. Locked notes are never indexed. It is a cache: delete the file and it is rebuilt. Syncing needs Full Disk Access; without it the app keeps running and logs why it cannot sync.

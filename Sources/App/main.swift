@@ -173,8 +173,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func confirmModelDownload() -> Bool {
         let alert = NSAlert()
-        alert.messageText = "Download the multilingual-e5-small model?"
-        alert.informativeText = "It is \(ByteCountFormatter.string(fromByteCount: ModelSource.e5Small.downloadSize, countStyle: .file)) "
+        alert.messageText = "Download the tabieum-e5-small-coreml model?"
+        alert.informativeText = "A Core ML conversion of multilingual-e5-small. It is "
+            + "\(ByteCountFormatter.string(fromByteCount: ModelSource.e5Small.downloadSize, countStyle: .file)) "
             + "and downloaded once from huggingface.co. Only the model is downloaded; your notes never leave this Mac."
         alert.addButton(withTitle: "Download")
         alert.addButton(withTitle: "Cancel")
