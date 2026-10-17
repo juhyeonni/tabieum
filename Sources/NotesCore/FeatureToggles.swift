@@ -7,6 +7,7 @@ public final class FeatureToggles: ObservableObject {
 
     @Published public var vimEnabled: Bool { didSet { defaults.set(vimEnabled, forKey: "vimEnabled") } }
     @Published public var vimJKEnabled: Bool { didSet { defaults.set(vimJKEnabled, forKey: "vimJKEnabled") } }
+    @Published public var vimCursorShape: VimCursorSetting { didSet { defaults.set(vimCursorShape.rawValue, forKey: "vimCursorShape") } }
     @Published public var ragEnabled: Bool { didSet { defaults.set(ragEnabled, forKey: "ragEnabled") } }
     @Published public var mcpEnabled: Bool { didSet { defaults.set(mcpEnabled, forKey: "mcpEnabled") } }
     @Published public var aiEnabled: Bool { didSet { defaults.set(aiEnabled, forKey: "aiEnabled") } }
@@ -61,6 +62,7 @@ public final class FeatureToggles: ObservableObject {
         templateFolder = defaults.string(forKey: "templateFolder") ?? "Templates"
         vimEnabled = defaults.bool(forKey: "vimEnabled")
         vimJKEnabled = defaults.bool(forKey: "vimJKEnabled")
+        vimCursorShape = defaults.string(forKey: "vimCursorShape").flatMap(VimCursorSetting.init(rawValue:)) ?? .modeBased
         ragEnabled = defaults.bool(forKey: "ragEnabled")
         mcpEnabled = defaults.bool(forKey: "mcpEnabled")
         aiEnabled = defaults.bool(forKey: "aiEnabled")
