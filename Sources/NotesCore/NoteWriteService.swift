@@ -18,7 +18,7 @@ public enum WriteFailure: Error, Equatable, Sendable {
 /// Writes into Notes itself; the real one sends Apple events, so tests use a fake.
 public protocol NoteWriter: Sendable {
     func folderExists(_ target: NoteTarget) async throws -> Bool
-    func createNote(title: String, html: String, in target: NoteTarget) async throws
+    func createNote(title: String?, html: String, in target: NoteTarget) async throws
 }
 
 public struct ConfirmRequest: Equatable, Sendable {
@@ -80,8 +80,9 @@ public struct NoteWriteService: Sendable {
         else { return Self.reply(error: "Not a valid write request.") }
         switch action {
         case .create:
-            guard let title = request["title"] as? String, !title.isEmpty, let html = request["html"] as? String else {
-                return Self.reply(error: "create needs a title and an html body.")
+            let title = (request["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            guard let html = request["html"] as? String, title != nil || !html.isEmpty else {
+                return Self.reply(error: "create needs an html body, or a title.")
             }
             return await create(title: title, html: html, session: session)
         case .edit, .delete:
@@ -89,7 +90,7 @@ public struct NoteWriteService: Sendable {
         }
     }
 
-    private func create(title: String, html: String, session: WriteSession) async -> String {
+    private func create(title: String?, html: String, session: WriteSession) async -> String {
         let settings = settings()
         guard settings.enabled else { return Self.reply(error: "Writing to Notes is off. Turn it on in \(productName) Settings.") }
         guard settings.allowedActions.contains(.create) else { return Self.reply(error: "Creating notes is not allowed in \(productName) Settings.") }
@@ -142,8 +143,9 @@ public struct NoteWriteService: Sendable {
         }
     }
 
-    static func preview(title: String, html: String) -> String {
+    static func preview(title: String?, html: String) -> String {
         let text = html.replacing(/<[^>]*>/, with: " ").split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard let title else { return String(text.prefix(800)) }
         return "\(title)\n\n\(text.prefix(800))"
     }
 
