@@ -12,10 +12,13 @@ public enum VimAction: Equatable, Sendable {
 public struct VimBuffer: Equatable, Sendable {
     public var text: String
     public var selection: NSRange
+    /// The part of the text scrolled into view, which H, M, L and the scroll keys are relative to.
+    public var visible: NSRange?
 
-    public init(text: String, selection: NSRange = NSRange(location: 0, length: 0)) {
+    public init(text: String, selection: NSRange = NSRange(location: 0, length: 0), visible: NSRange? = nil) {
         self.text = text
         self.selection = selection
+        self.visible = visible
     }
 
     public mutating func apply(_ action: VimAction) {
