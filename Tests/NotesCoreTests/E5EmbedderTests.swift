@@ -100,7 +100,7 @@ struct E5EmbedderTests {
 
     @Test func configuredEmbedderFollowsTheSettingOnEveryCall() {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
-        let configured = ConfiguredEmbedder(defaults: defaults, apple: Labeled("apple"), e5: Labeled("e5"))
+        let configured = ConfiguredEmbedder(defaults: defaults, apple: Labeled("apple"), e5: Labeled("e5"), e5Available: true)
         #expect(configured.fingerprint == "apple")
         defaults.set(EmbeddingModel.e5Small.rawValue, forKey: EmbeddingModel.defaultsKey)
         #expect(configured.fingerprint == "e5")

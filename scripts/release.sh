@@ -7,9 +7,10 @@ cd "$(dirname "$0")/.."
 : "${TABIEUM_SIGN_IDENTITY:?set TABIEUM_SIGN_IDENTITY to the signing certificate name}"
 
 scripts/test.sh
-scripts/bundle.sh
+TABIEUM_ARCHS="arm64 x86_64" scripts/bundle.sh
 app="build/$PRODUCT_NAME.app"
 codesign --verify --strict "$app"
+echo "architectures: $(lipo -archs "$app/Contents/MacOS/$PRODUCT_NAME")"
 
 zip="dist/$PRODUCT_NAME-$VERSION.zip"
 mkdir -p dist
