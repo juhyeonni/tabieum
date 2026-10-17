@@ -12,19 +12,52 @@ public enum AIPromptError: Error, Equatable {
 /// Ollama's default context is 4,096 tokens and the OpenAI-compatible API cannot raise it.
 public let maxAISelectionLength = 4_000
 
+public enum AIContext: Equatable, Sendable {
+    case selection(String), wholeNote(String), tooLong(Int), none
+
+    public var text: String {
+        switch self {
+        case let .selection(text), let .wholeNote(text): text
+        case .tooLong, .none: ""
+        }
+    }
+
+    public var chip: String? {
+        switch self {
+        case let .selection(text): "Selection · \(characters(text.count))"
+        case let .wholeNote(text): "Whole note · \(characters(text.count))"
+        case let .tooLong(count): "Note too long (\(characters(count))) · select a part"
+        case .none: nil
+        }
+    }
+
+    private func characters(_ count: Int) -> String {
+        count.formatted(.number.grouping(.automatic).locale(Locale(identifier: "en_US"))) + " characters"
+    }
+}
+
+public func aiContext(text: String, selection: NSRange) -> AIContext {
+    if selection.length > 0 { return .selection((text as NSString).substring(with: selection)) }
+    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .none }
+    return text.count > maxAISelectionLength ? .tooLong(text.count) : .wholeNote(text)
+}
+
 public func availableAIActions(aiOn: Bool, hasSelection: Bool) -> [AIAction] {
     guard aiOn else { return [] }
     return hasSelection ? [.rewrite, .summarize, .instruction] : [.prompt]
 }
 
-/// A free prompt sends only the instruction; the other actions send the selection verbatim.
-public func aiMessages(for action: AIAction, selection: String, instruction: String = "") throws -> [ChatMessage] {
+/// A free prompt sends the instruction, plus `context` when given; the other actions send the selection verbatim.
+public func aiMessages(for action: AIAction, selection: String, instruction: String = "", context: String = "") throws -> [ChatMessage] {
     let system = ChatMessage(role: .system, content: """
     You are a writing assistant inside Apple Notes. Reply with plain text only, with no Markdown, \
     in the same language as the input. Reply with only the result: no preamble, no explanation.
     """)
     let instruction = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
-    if action == .prompt { return [system, ChatMessage(role: .user, content: instruction)] }
+    if action == .prompt {
+        let content = context.isEmpty ? instruction : "\(instruction)\n\nNote:\n\(context)"
+        return [system, ChatMessage(role: .user, content: content)]
+    }
     guard selection.count <= maxAISelectionLength else { throw AIPromptError.tooLong }
     let task = switch action {
     case .rewrite: "Rewrite the text below to read better, keeping its meaning."
@@ -36,9 +69,9 @@ public func aiMessages(for action: AIAction, selection: String, instruction: Str
 }
 
 /// Streams the provider's reply, or fails with `AIPromptError` without calling the provider.
-public func aiResult(provider: any AIProvider, action: AIAction, selection: String, instruction: String = "") -> AsyncThrowingStream<String, Error> {
+public func aiResult(provider: any AIProvider, action: AIAction, selection: String, instruction: String = "", context: String = "") -> AsyncThrowingStream<String, Error> {
     do {
-        return provider.chat(try aiMessages(for: action, selection: selection, instruction: instruction))
+        return provider.chat(try aiMessages(for: action, selection: selection, instruction: instruction, context: context))
     } catch {
         return AsyncThrowingStream { $0.finish(throwing: error) }
     }

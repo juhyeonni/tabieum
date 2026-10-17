@@ -11,7 +11,7 @@ final class AIAssistant {
     private let feature: AIFeature
     private let indexURL: URL?
     private lazy var panel = AIPanel(
-        run: { [weak self] in self?.run($0, instruction: $1) },
+        run: { [weak self] in self?.run($0, instruction: $1, withContext: $2) },
         ask: { [weak self] in self?.ask($0) },
         accept: { [weak self] in self?.accept() },
         allow: { [weak self] in self?.allow() },
@@ -21,6 +21,7 @@ final class AIAssistant {
     private var caret: CGRect = .zero
     private var action: AIAction = .prompt
     private var instruction = ""
+    private var withContext = true
     private var result = ""
     private var consentHost: String?
     private var question: String?
@@ -62,6 +63,7 @@ final class AIAssistant {
         snapshot = buffer
         caret = appKitRect(fromAX: rect, primaryScreenHeight: primary.frame.height)
         panel.show(.input(hasSelection: buffer.selection.length > 0,
+                          chip: aiContext(text: buffer.text, selection: buffer.selection).chip,
                           canAsk: indexURL != nil && canAskNotes(aiOn: toggles.aiEnabled, ragOn: toggles.ragEnabled)), at: caret)
     }
 
@@ -105,18 +107,20 @@ final class AIAssistant {
         if task == nil { panel.render(.failed("Set a base URL and chat model in Settings.")) }
     }
 
-    private func run(_ action: AIAction, instruction: String) {
+    private func run(_ action: AIAction, instruction: String, withContext: Bool) {
         guard let snapshot else { return }
         self.action = action
         self.instruction = instruction
+        self.withContext = withContext
         result = ""
         question = nil
-        let selection = (snapshot.text as NSString).substring(with: snapshot.selection)
+        let context = withContext ? aiContext(text: snapshot.text, selection: snapshot.selection) : .none
+        let selection = action == .prompt ? "" : context.text
         panel.render(.streaming(""))
         task?.cancel()
         task = feature.perform { [weak self] provider in
             do {
-                for try await piece in aiResult(provider: provider, action: action, selection: selection, instruction: instruction) {
+                for try await piece in aiResult(provider: provider, action: action, selection: selection, instruction: instruction, context: context.text) {
                     guard !Task.isCancelled, let self else { return }
                     result += piece
                     let shown = strippingThinkBlock(result)
@@ -159,7 +163,7 @@ final class AIAssistant {
         guard let consentHost else { return }
         HostConsent().grant(consentHost)
         self.consentHost = nil
-        if let question { ask(question) } else { run(action, instruction: instruction) }
+        if let question { ask(question) } else { run(action, instruction: instruction, withContext: withContext) }
     }
 
     private func copy() {
@@ -210,7 +214,7 @@ final class AIAssistant {
 @MainActor
 final class AIPanel: NSPanel, NSTextFieldDelegate {
     enum Phase {
-        case input(hasSelection: Bool, canAsk: Bool)
+        case input(hasSelection: Bool, chip: String?, canAsk: Bool)
         case streaming(String)
         case done(String)
         case answer(String)
@@ -225,17 +229,21 @@ final class AIPanel: NSPanel, NSTextFieldDelegate {
     private let resultScroll = NSScrollView()
     private let actions = NSStackView()
     private let extra = NSButton()
+    private let chipLabel = NSTextField(labelWithString: "")
+    private lazy var chipRow = NSStackView(views: [chipLabel, button("×", #selector(removeChip))])
+    private var chipOn = false
+    private var selectionOn = false
     private lazy var askButton = button("Ask my notes", #selector(askNotes))
-    private var phase = Phase.input(hasSelection: false, canAsk: false)
+    private var phase = Phase.input(hasSelection: false, chip: nil, canAsk: false)
     private var dismissing = false
-    private let onRun: (AIAction, String) -> Void
+    private let onRun: (AIAction, String, Bool) -> Void
     private let onAsk: (String) -> Void
     private let onAccept: () -> Void
     private let onAllow: () -> Void
     private let onCopy: () -> Void
     private let onCancel: () -> Void
 
-    init(run: @escaping (AIAction, String) -> Void, ask: @escaping (String) -> Void, accept: @escaping () -> Void, allow: @escaping () -> Void,
+    init(run: @escaping (AIAction, String, Bool) -> Void, ask: @escaping (String) -> Void, accept: @escaping () -> Void, allow: @escaping () -> Void,
          copy: @escaping () -> Void, cancel: @escaping () -> Void) {
         onRun = run
         onAsk = ask
@@ -267,7 +275,7 @@ final class AIPanel: NSPanel, NSTextFieldDelegate {
         extra.target = self
         extra.action = #selector(extraClicked)
 
-        let stack = NSStackView(views: [field, actions, status, resultScroll, extra])
+        let stack = NSStackView(views: [field, chipRow, actions, status, resultScroll, extra])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.edgeInsets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
@@ -326,14 +334,14 @@ final class AIPanel: NSPanel, NSTextFieldDelegate {
         self.phase = phase
         var showsField = false, showsActions = false, text: String?, message = "", extraTitle: String?
         switch phase {
-        case let .input(hasSelection, canAsk):
+        case let .input(hasSelection, chip, canAsk):
             showsField = true
-            showsActions = hasSelection || canAsk
-            for view in actions.views { view.isHidden = !hasSelection && view !== askButton }
-            askButton.isHidden = !canAsk
+            chipOn = chip != nil
+            selectionOn = hasSelection
+            chipLabel.stringValue = chip ?? ""
             field.stringValue = ""
-            field.placeholderString = hasSelection ? "Instruction, or Rewrite / Summarize" : "Ask AI to write something"
-            message = hasSelection ? "Return rewrites, following the instruction if given." : "Return to write at the caret."
+            showsActions = hasSelection || canAsk
+            askButton.isHidden = !canAsk
         case let .streaming(shown):
             text = shown
             message = "Writing… Esc to cancel."
@@ -354,9 +362,16 @@ final class AIPanel: NSPanel, NSTextFieldDelegate {
             message = "The note changed, so nothing was written."
             extraTitle = "Copy"
         }
+        let selecting = selectionOn && chipOn
+        if case .input = phase {
+            for view in actions.views { view.isHidden = !selecting && view !== askButton }
+            field.placeholderString = selecting ? "Instruction, or Rewrite / Summarize" : "Ask AI to write something"
+            status.stringValue = selecting ? "Return rewrites, following the instruction if given." : "Return to write at the caret."
+        }
+        chipRow.isHidden = !(showsField && chipOn)
         field.isHidden = !showsField
         actions.isHidden = !showsActions
-        status.stringValue = message
+        if case .input = phase {} else { status.stringValue = message }
         resultScroll.isHidden = text == nil
         result.string = text ?? ""
         extra.isHidden = extraTitle == nil
@@ -389,22 +404,28 @@ final class AIPanel: NSPanel, NSTextFieldDelegate {
 
     private func submit() {
         let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard case let .input(hasSelection, _) = phase else { return }
-        if !hasSelection {
-            if !text.isEmpty { onRun(.prompt, text) }
+        guard case .input = phase else { return }
+        if !(selectionOn && chipOn) {
+            if !text.isEmpty { onRun(.prompt, text, chipOn) }
         } else {
-            onRun(text.isEmpty ? .rewrite : .instruction, text)
+            onRun(text.isEmpty ? .rewrite : .instruction, text, true)
         }
     }
 
-    @objc private func rewrite() { onRun(.rewrite, field.stringValue) }
+    @objc private func removeChip() {
+        let typed = field.stringValue
+        render(.input(hasSelection: false, chip: nil, canAsk: !askButton.isHidden))
+        field.stringValue = typed
+    }
+
+    @objc private func rewrite() { onRun(.rewrite, field.stringValue, true) }
 
     @objc private func askNotes() {
         let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if !text.isEmpty { onAsk(text) }
     }
 
-    @objc private func summarize() { onRun(.summarize, field.stringValue) }
+    @objc private func summarize() { onRun(.summarize, field.stringValue, true) }
 
     @objc private func extraClicked() {
         if case .consent = phase { onAllow() } else { onCopy() }

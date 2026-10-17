@@ -97,3 +97,31 @@ func selectionActionsCarrySelectionVerbatim(action: AIAction) throws {
     defaults.set(Int(CGEventFlags.maskAlternate.rawValue), forKey: "aiShortcutModifiers")
     #expect(FeatureToggles(defaults: defaults).aiShortcut == .aiDefault)
 }
+
+@Test func contextIsSelectionThenWholeNoteThenNothing() {
+    #expect(aiContext(text: "hello world", selection: NSRange(location: 0, length: 5)) == .selection("hello"))
+    #expect(aiContext(text: "hello world", selection: NSRange(location: 3, length: 0)) == .wholeNote("hello world"))
+    #expect(aiContext(text: " \n", selection: NSRange(location: 0, length: 0)) == .none)
+}
+
+@Test func overlongNoteIsTooLongAndSendsOnlyTheInstruction() throws {
+    let note = String(repeating: "a", count: maxAISelectionLength + 1)
+    let context = aiContext(text: note, selection: NSRange(location: 0, length: 0))
+    #expect(context == .tooLong(note.count))
+    let messages = try aiMessages(for: .prompt, selection: "", instruction: "tidy", context: context.text)
+    #expect(messages[1].content == "tidy")
+}
+
+@Test func freePromptCarriesTheContextWhenGiven() throws {
+    let with = try aiMessages(for: .prompt, selection: "", instruction: "tidy", context: "my note")
+    #expect(with[1].content.contains("tidy") && with[1].content.contains("my note"))
+    let without = try aiMessages(for: .prompt, selection: "", instruction: "tidy")
+    #expect(without[1].content == "tidy")
+}
+
+@Test func chipTextNamesScopeAndSize() {
+    #expect(AIContext.wholeNote(String(repeating: "a", count: 1234)).chip == "Whole note · 1,234 characters")
+    #expect(AIContext.selection(String(repeating: "a", count: 120)).chip == "Selection · 120 characters")
+    #expect(AIContext.tooLong(12345).chip == "Note too long (12,345 characters) · select a part")
+    #expect(AIContext.none.chip == nil)
+}
