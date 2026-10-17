@@ -68,11 +68,11 @@ private func makeIndex(_ source: FakeNotes, url: URL = tempURL()) throws -> Sear
         #expect(Set(try index.search("회의").map(\.id)) == ["b", "c"])
     }
 
-    @Test func allTermsMustMatch() throws {
+    @Test func notesWithAllTermsComeFirst() throws {
         let source = FakeNotes()
         source.set("a", title: "apple pie", body: "")
         source.set("b", title: "apple", body: "")
-        #expect(try makeIndex(source).search("apple pie").map(\.id) == ["a"])
+        #expect(try makeIndex(source).search("apple pie").map(\.id) == ["a", "b"])
     }
 
     @Test func hostileQueriesNeverFail() throws {
