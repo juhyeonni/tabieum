@@ -1,7 +1,8 @@
 import Foundation
 import SQLite3
 
-/// A read-only MCP server (newline-delimited JSON-RPC 2.0 over stdio) over the app's own search index.
+/// An MCP server (newline-delimited JSON-RPC 2.0 over stdio) over the app's own search index. It reads on its own;
+/// the one write tool hands its request to the running app, which applies the owner's settings and consent.
 public struct MCPServer: Sendable {
     static let supportedVersions = ["2025-11-25", "2025-06-18", "2025-03-26"]
 
@@ -10,12 +11,14 @@ public struct MCPServer: Sendable {
         case searchNotes = "search_notes"
         case getNote = "get_note"
         case listBacklinks = "list_backlinks"
+        case createNote = "create_note"
 
         var description: String {
             switch self {
             case .searchNotes: "Search the user's notes. Returns the best matches with a snippet."
             case .getNote: "Read one note as Markdown by its id."
             case .listBacklinks: "List the notes that link to one note, by its id."
+            case .createNote: "Create a note from a title and a Markdown body. It goes into the folder the owner chose and may need the owner's approval in the app."
             }
         }
 
@@ -27,6 +30,17 @@ public struct MCPServer: Sendable {
                     "k": ["type": "integer", "minimum": 1, "maximum": 50, "default": 10]]]
             case .getNote, .listBacklinks:
                 ["type": "object", "required": ["id"], "properties": ["id": ["type": "string"]]]
+            case .createNote:
+                ["type": "object", "required": ["title", "body"], "properties": [
+                    "title": ["type": "string", "minLength": 1],
+                    "body": ["type": "string", "description": "Markdown: headings, lists, bold, italic and inline code."]]]
+            }
+        }
+
+        var annotations: [String: Any]? {
+            switch self {
+            case .createNote: ["readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false]
+            default: nil
             }
         }
     }
@@ -39,12 +53,16 @@ public struct MCPServer: Sendable {
     let isEnabled: @Sendable () -> Bool
     let ragEnabled: @Sendable () -> Bool
     let makeEmbedder: @Sendable () -> Embedder
+    let writeSettings: @Sendable () -> WriteSettings
+    let writeChannel: WriteChannel?
 
     public init(
         serverName: String, version: String, indexURL: URL,
         isEnabled: @escaping @Sendable () -> Bool,
         ragEnabled: @escaping @Sendable () -> Bool = { false },
-        makeEmbedder: @escaping @Sendable () -> Embedder = { AppleEmbedder() }
+        makeEmbedder: @escaping @Sendable () -> Embedder = { AppleEmbedder() },
+        writeSettings: @escaping @Sendable () -> WriteSettings = { WriteSettings() },
+        writeChannel: WriteChannel? = nil
     ) {
         self.serverName = serverName
         self.version = version
@@ -52,6 +70,8 @@ public struct MCPServer: Sendable {
         self.isEnabled = isEnabled
         self.ragEnabled = ragEnabled
         self.makeEmbedder = makeEmbedder
+        self.writeSettings = writeSettings
+        self.writeChannel = writeChannel
     }
 
     /// Serves stdin until it closes. Only protocol messages go to stdout.
@@ -76,8 +96,10 @@ public struct MCPServer: Sendable {
         switch method {
         case "initialize": return result(id, initialize(params))
         case "ping": return result(id, [:])
-        case "tools/list": return result(id, ["tools": Tool.allCases.map {
-            ["name": $0.rawValue, "description": $0.description, "inputSchema": $0.schema] as [String: Any]
+        case "tools/list": return result(id, ["tools": Tool.allCases.filter { refusal(for: $0) == nil }.map { tool in
+            var entry: [String: Any] = ["name": tool.rawValue, "description": tool.description, "inputSchema": tool.schema]
+            entry["annotations"] = tool.annotations
+            return entry
         }])
         case "tools/call": return result(id, call(params))
         default: return error(id, -32601, "Method not found")
@@ -101,13 +123,14 @@ public struct MCPServer: Sendable {
             guard isEnabled() else {
                 throw ToolFailure(message: "The \"AI agents (MCP)\" option is off. Turn it on in \(serverName) Settings.")
             }
-            let index = try openIndex()
+            if let refusal = refusal(for: tool) { throw ToolFailure(message: refusal) }
             let arguments = params["arguments"] as? [String: Any] ?? [:]
             let output: Any
             switch tool {
-            case .searchNotes: output = try search(index, arguments)
-            case .getNote: output = try getNote(index, arguments)
-            case .listBacklinks: output = try listBacklinks(index, arguments)
+            case .searchNotes: output = try search(openIndex(), arguments)
+            case .getNote: output = try getNote(openIndex(), arguments)
+            case .listBacklinks: output = try listBacklinks(openIndex(), arguments)
+            case .createNote: output = try createNote(arguments)
             }
             return content(output, isError: false)
         } catch let failure as ToolFailure {
@@ -115,6 +138,42 @@ public struct MCPServer: Sendable {
         } catch {
             return content("\(error)", isError: true)
         }
+    }
+
+    /// Why a tool is unavailable, or nil. The read tools are always listed.
+    private func refusal(for tool: Tool) -> String? {
+        guard tool == .createNote else { return nil }
+        guard isEnabled() else { return "The \"AI agents (MCP)\" option is off. Turn it on in \(serverName) Settings." }
+        let settings = writeSettings()
+        guard settings.enabled else { return "Writing to Notes is off. Turn it on in \(serverName) Settings." }
+        guard settings.allowedActions.contains(.create) else { return "Creating notes is not allowed in \(serverName) Settings." }
+        guard settings.consent != .never else { return "Writing to Notes is set to never allow in \(serverName) Settings." }
+        guard writeChannel != nil else { return "This server cannot reach \(serverName)." }
+        return nil
+    }
+
+    private func createNote(_ arguments: [String: Any]) throws -> String {
+        guard let title = arguments["title"] as? String, !title.isEmpty else {
+            throw ToolFailure(message: "title must be a non-empty string.")
+        }
+        guard let body = arguments["body"] as? String else { throw ToolFailure(message: "body must be a string.") }
+        guard let writeChannel else { throw ToolFailure(message: "This server cannot reach \(serverName).") }
+        let request = Self.json(["action": "create", "title": title, "html": NoteHTML.html(fromMarkdown: body)])
+        let reply: String
+        do {
+            reply = try writeChannel.send(request)
+        } catch WriteChannelError.noAnswer {
+            throw ToolFailure(message: "\(serverName) did not answer in time. The note may not have been created.")
+        } catch {
+            throw ToolFailure(message: "\(serverName) is not running. Open it, then try again.")
+        }
+        guard let data = reply.data(using: .utf8), let answer = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw ToolFailure(message: "\(serverName) sent an answer that could not be read.")
+        }
+        guard answer["ok"] as? Bool == true else {
+            throw ToolFailure(message: answer["error"] as? String ?? "\(serverName) refused the request.")
+        }
+        return "Created the note in the target folder."
     }
 
     private func openIndex() throws -> SearchIndex {

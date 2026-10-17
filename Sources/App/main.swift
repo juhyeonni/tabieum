@@ -210,7 +210,9 @@ if CommandLine.arguments.contains("--mcp") {
         serverName: info?.name ?? "NoteKit", version: "0.1.0",
         indexURL: SearchIndex.defaultURL(bundleIdentifier: info?.bundleIdentifier ?? "dev.juhyeonni.notekit"),
         isEnabled: { UserDefaults.standard.bool(forKey: "mcpEnabled") },
-        ragEnabled: { UserDefaults.standard.bool(forKey: "ragEnabled") }
+        ragEnabled: { UserDefaults.standard.bool(forKey: "ragEnabled") },
+        writeSettings: { WriteSettings(defaults: .standard) },
+        writeChannel: WriteSocketClient(path: NoteWriteService.socketURL(bundleIdentifier: info?.bundleIdentifier ?? "dev.juhyeonni.notekit"))
     ).runStdio()
     exit(0)
 }
