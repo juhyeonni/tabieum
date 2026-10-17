@@ -350,20 +350,10 @@ final class VimController {
         cursorBlock.show([(rect, true)], in: frame)
     }
 
-    /// The character under the cursor; a selection's cursor is its last character. An empty line or the end of the note gets a block half as wide as the line is tall.
     private func cursorBlockRect(_ buffer: VimBuffer) -> CGRect? {
-        let ns = buffer.text as NSString
-        let selection = buffer.selection
-        let at = selection.length > 0 ? NSMaxRange(selection) - 1 : selection.location
-        if at < ns.length {
-            let range = ns.rangeOfComposedCharacterSequence(at: at)
-            let isBreak = ns.substring(with: range).trimmingCharacters(in: .newlines).isEmpty
-            if !isBreak, let rect = tracker.bounds(for: range), rect.size != .zero { return rect }
-        }
-        guard let line = tracker.caretRect(), line.height > 0 else { return nil }
-        let afterCharacter = at > 0 && !ns.substring(with: ns.rangeOfComposedCharacterSequence(at: at - 1))
-            .trimmingCharacters(in: .newlines).isEmpty
-        return CGRect(x: afterCharacter ? line.maxX : line.minX, y: line.minY, width: line.height / 2, height: line.height)
+        vimCursorBlockRect(
+            text: buffer.text, selection: buffer.selection,
+            boundsFor: { tracker.bounds(for: $0) }, caretRect: { tracker.caretRect() })
     }
 
     private func refreshShading() {
