@@ -190,6 +190,11 @@ final class VimController {
                 return await wait(applied)
             }
             return await paste(text, until: applied)
+        case .indent(let range, let outdent):
+            guard select(range) else { return false }
+            post(keyCode: outdent ? 33 : 30, flags: .maskCommand)
+            try? await Task.sleep(for: .milliseconds(30))
+            return true
         case .undo, .redo:
             let before = tracker.textLength
             post(keyCode: 6, flags: action == .redo ? [.maskCommand, .maskShift] : .maskCommand)
@@ -291,6 +296,7 @@ final class ModeIndicator {
         case .normal: "-- NORMAL --"
         case .insert: "-- INSERT --"
         case .visual: "-- VISUAL --"
+        case .visualLine: "-- VISUAL LINE --"
         case .search: "-- SEARCH --"
         }
         label.stringValue = prompt ?? text

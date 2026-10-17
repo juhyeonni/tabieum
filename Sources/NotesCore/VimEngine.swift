@@ -21,7 +21,7 @@ public struct VimKey: Equatable, Sendable {
 }
 
 public enum VimMode: Equatable, Sendable {
-    case normal, insert, visual, search
+    case normal, insert, visual, visualLine, search
 }
 
 public struct VimFind: Equatable, Sendable {
@@ -133,7 +133,8 @@ public indirect enum VimCommand: Equatable, Sendable {
     case replaceChar(Character)
     case insert(VimInsertion)
     case exitInsert(deletingJ: Bool)
-    case enterVisual, exitVisual
+    case enterVisual, enterVisualLine, exitVisual, swapVisualEnds, joinSelection
+    case indentSelection(outdent: Bool)
     case deleteSelection, yankSelection
     case search(String, forward: Bool)
     case searchNext(reverse: Bool)
@@ -165,6 +166,7 @@ public struct VimEngine: Sendable {
     private var goal: (offset: Int, column: Int)?
     private var visualAnchor: Int?
     private var visualCursor = 0
+    private var visualLinewise = false
     private var searchInput = ""
     private var searchForward = true
     private var lastSearch: (pattern: String, forward: Bool)?
@@ -240,7 +242,7 @@ public struct VimEngine: Sendable {
         if key.command { reset(); return .passThrough }
         if key.isEscape {
             reset()
-            guard mode == .visual, !busy else { return .consume(.none) }
+            guard inVisual, !busy else { return .consume(.none) }
             mode = .normal
             return .consume(.exitVisual)
         }
@@ -271,7 +273,7 @@ public struct VimEngine: Sendable {
             return .consume(.none)
         }
         if "ftFT".contains(c) { pending = c; return .consume(.none) }
-        if c == "i" || c == "a", op != nil || mode == .visual { pending = c; return .consume(.none) }
+        if c == "i" || c == "a", op != nil || inVisual { pending = c; return .consume(.none) }
         if let op {
             if VimOperator(c) == op { return .consume(operate(.operateLines(op))) }
             if c == "g" { pending = c; return .consume(.none) }
@@ -280,9 +282,11 @@ public struct VimEngine: Sendable {
         }
         if c == "g" { pending = c; return .consume(.none) }
         if let motion = VimMotion(c) { return .consume(finish(.motion(motion))) }
-        if mode == .visual { reset() }
-        return .consume(mode == .visual ? visualCommand(c) : normalCommand(c))
+        if inVisual { reset() }
+        return .consume(inVisual ? visualCommand(c) : normalCommand(c))
     }
+
+    private var inVisual: Bool { mode == .visual || mode == .visualLine }
 
     private mutating func reset() {
         count = nil
@@ -343,6 +347,7 @@ public struct VimEngine: Sendable {
         case "n", "N": reset(); return .searchNext(reverse: c == "N")
         case "*", "#": reset(); return .searchWord(forward: c == "*")
         case "v": reset(); mode = .visual; return .enterVisual
+        case "V": reset(); mode = .visualLine; return .enterVisualLine
         default: reset(); return .none
         }
     }
@@ -351,7 +356,17 @@ public struct VimEngine: Sendable {
         switch c {
         case "x", "d": mode = .normal; return .deleteSelection
         case "y": mode = .normal; return .yankSelection
-        case "v": mode = .normal; return .exitVisual
+        case "v":
+            if mode == .visualLine { mode = .visual; return .enterVisual }
+            mode = .normal
+            return .exitVisual
+        case "V":
+            if mode == .visualLine { mode = .normal; return .exitVisual }
+            mode = .visualLine
+            return .enterVisualLine
+        case "o": return .swapVisualEnds
+        case "J": mode = .normal; return .joinSelection
+        case ">", "<": mode = .normal; return .indentSelection(outdent: c == "<")
         default: return .none
         }
     }
@@ -445,17 +460,7 @@ public struct VimEngine: Sendable {
                 cursorAt: range.location + toggled.utf16.count)
 
         case .join:
-            let end = t.lineEnd(cur)
-            guard end < t.count else { return [] }
-            let nextEnd = t.lineEnd(end + 1)
-            var next = end + 1
-            while next < nextEnd && t.chars[next].isWhitespace { next += 1 }
-            let wide = t.range(t.lineStart(cur), nextEnd)
-            guard !buffer.deleteWouldHitBlockAttachment(wide) else { return [] }
-            let space = next < nextEnd && end > t.lineStart(cur)
-            let at = t.offsets[end]
-            return edit(
-                buffer, [.delete(t.range(end, next))] + (space ? [.insert(" ", at: at)] : []), cursorAt: at)
+            return joinLine(at: cur, buffer, t)
 
         case .redo:
             return [.redo]
@@ -487,10 +492,29 @@ public struct VimEngine: Sendable {
             lastSearch = (word.text, forward)
             return find(word.text, forward, from: word.start, buffer, t)
 
-        case .enterVisual:
-            visualAnchor = t.offsets[cur]
-            visualCursor = t.offsets[cur]
-            return [.select(visualRange(t.offsets[cur], in: t))]
+        case .enterVisual, .enterVisualLine:
+            visualLinewise = command == .enterVisualLine
+            if visualAnchor == nil {
+                visualAnchor = t.offsets[cur]
+                visualCursor = t.offsets[cur]
+            }
+            return [.select(visualRange(visualAnchor!, in: t))]
+
+        case .swapVisualEnds:
+            guard let anchor = visualAnchor else { return [] }
+            visualAnchor = visualCursor
+            visualCursor = anchor
+            return [.select(visualRange(visualAnchor!, in: t))]
+
+        case .joinSelection, .indentSelection:
+            guard let anchor = visualAnchor else { return [] }
+            visualAnchor = nil
+            let a = t.index(at: anchor), c = t.index(at: visualCursor)
+            let lo = t.lineStart(min(a, c)), hi = t.lineEnd(max(a, c))
+            if case .indentSelection(let outdent) = command {
+                return [.indent(t.range(lo, min(hi + 1, t.count)), outdent: outdent), .select(t.range(lo, lo))]
+            }
+            return joinSelectedLines(buffer, t, from: lo, to: hi)
 
         case .exitVisual:
             visualAnchor = nil
@@ -500,12 +524,47 @@ public struct VimEngine: Sendable {
         case .deleteSelection, .yankSelection:
             guard let anchor = visualAnchor else { return [] }
             visualAnchor = nil
+            if visualLinewise {
+                let a = t.index(at: anchor), c = t.index(at: visualCursor)
+                let lo = t.lineStart(min(a, c)), hi = t.lineEnd(max(a, c))
+                let actions = lines(command == .deleteSelection ? .delete : .yank, lo, hi, buffer, t)
+                return actions.isEmpty ? [.select(t.range(lo, lo))] : actions
+            }
             let range = visualRange(anchor, in: t)
             let lo = t.index(at: range.location), hi = t.index(at: range.location + range.length)
             register = .charwise(t.string(lo, hi))
             guard command == .deleteSelection else { return [.select(t.range(lo, lo))] }
             return edit(buffer, .delete(range), cursorAt: range.location)
         }
+    }
+
+    private func joinLine(at cur: Int, _ buffer: VimBuffer, _ t: VimText) -> [VimAction] {
+        let end = t.lineEnd(cur)
+        guard end < t.count else { return [] }
+        let nextEnd = t.lineEnd(end + 1)
+        var next = end + 1
+        while next < nextEnd && t.chars[next].isWhitespace { next += 1 }
+        let wide = t.range(t.lineStart(cur), nextEnd)
+        guard !buffer.deleteWouldHitBlockAttachment(wide) else { return [] }
+        let space = next < nextEnd && end > t.lineStart(cur)
+        let at = t.offsets[end]
+        return edit(
+            buffer, [.delete(t.range(end, next))] + (space ? [.insert(" ", at: at)] : []), cursorAt: at)
+    }
+
+    private func joinSelectedLines(_ buffer: VimBuffer, _ t: VimText, from lo: Int, to hi: Int) -> [VimAction] {
+        var work = buffer
+        var edits: [VimAction] = []
+        var last: [VimAction] = []
+        let joins = max(t.chars[lo..<hi].filter { $0 == "\n" }.count, 1)
+        for _ in 0..<joins {
+            let actions = joinLine(at: lo, work, VimText(work.text))
+            guard !actions.isEmpty else { break }
+            work.apply(actions)
+            edits += actions.dropLast()
+            last = [actions.last!]
+        }
+        return last.isEmpty ? [.select(t.range(lo, lo))] : edits + last
     }
 
     private func find(
@@ -529,6 +588,9 @@ public struct VimEngine: Sendable {
 
     private func visualRange(_ anchor: Int, in t: VimText) -> NSRange {
         let a = t.index(at: anchor), c = t.index(at: visualCursor)
+        if visualLinewise {
+            return t.range(t.lineStart(min(a, c)), min(t.lineEnd(max(a, c)) + 1, t.count))
+        }
         return t.range(min(a, c), min(max(a, c) + 1, t.count))
     }
 
