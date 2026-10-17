@@ -61,9 +61,27 @@ private final class FakeNotes {
     #expect(VimCommand.insert(.before).startsInsert)
 }
 
+// #110 AC3
+@Test func undoAfterADeleteIsPlain() {
+    var groups = HistoryGroups()
+    groups.record(.insert(.before), text: "abc")
+    groups.record(.deleteChar, text: "ab")
+    #expect(groups.plan(.undo) == .plain)
+}
+
 // #110 AC4
 @Test func redoReplaysTheStepsOfTheGroupedUndo() {
-    var presses = 0
-    let done = pressHistory(count: 3, isEnabled: { true }, press: { presses += 1 })
-    #expect(done == 3 && presses == 3)
+    var groups = HistoryGroups()
+    groups.record(.insert(.before), text: "abc")
+    #expect(groups.plan(.undo) == .undoUntil("abc"))
+    groups.undone(steps: 3)
+    #expect(groups.plan(.redo) == .redo(3))
+    #expect(groups.plan(.redo) == .plain)
+}
+
+@Test func countedUndoEndsTheGroup() {
+    var groups = HistoryGroups()
+    groups.record(.insert(.before), text: "abc")
+    groups.record(.counted(.undo, 2), text: "abc")
+    #expect(groups.plan(.undo) == .plain)
 }

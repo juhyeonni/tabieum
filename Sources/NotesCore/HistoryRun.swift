@@ -58,3 +58,48 @@ public func undoUntil<T: Equatable>(
     }
     return steps
 }
+
+/// Remembers the text before the last insert session and the steps of the last grouped undo.
+public struct HistoryGroups {
+    public enum Plan: Equatable {
+        case plain
+        case undoUntil(String)
+        case redo(Int)
+    }
+
+    private var textBeforeInsertSession: String?
+    private var redoSteps: Int?
+
+    public init() {}
+
+    public mutating func record(_ command: VimCommand, text: String) {
+        switch command {
+        case .counted(.undo, _), .counted(.redo, _):
+            textBeforeInsertSession = nil
+        default:
+            if command.startsInsert {
+                textBeforeInsertSession = text
+            } else if command.isChange {
+                textBeforeInsertSession = nil
+            }
+        }
+        if command.isChange { redoSteps = nil }
+    }
+
+    public mutating func plan(_ command: VimCommand) -> Plan {
+        switch command {
+        case .undo:
+            guard let text = textBeforeInsertSession else { return .plain }
+            textBeforeInsertSession = nil
+            return .undoUntil(text)
+        case .redo:
+            guard let steps = redoSteps else { return .plain }
+            redoSteps = nil
+            return .redo(steps)
+        default:
+            return .plain
+        }
+    }
+
+    public mutating func undone(steps: Int) { redoSteps = steps }
+}
