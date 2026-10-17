@@ -75,7 +75,7 @@ final class AIAssistant {
         task = feature.perform { [weak self] provider in
             do {
                 let found = try await Task.detached {
-                    try SearchIndex(url: indexURL, readOnly: true).hybridSearch(question, embedder: AppleEmbedder(), limit: askSourceCount)
+                    try SearchIndex(url: indexURL, readOnly: true).hybridSearch(question, embedder: ConfiguredEmbedder(), limit: askSourceCount)
                 }.value
                 let sources = askSources(from: found)
                 guard !sources.isEmpty else {

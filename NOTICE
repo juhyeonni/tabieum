@@ -1,2 +1,9 @@
 tabieum
 Copyright 2026 Juhyeon Lee
+
+This product includes software developed by third parties:
+
+- swift-transformers (Apache License 2.0), Hugging Face: tokenizer. Its dependencies: swift-jinja, swift-huggingface, swift-collections and swift-crypto (Apache License 2.0), swift-asn1 (Apache License 2.0), EventSource (MIT License, Copyright 2025 Mattt) and yyjson (MIT License, Copyright (c) 2020 YaoYuan).
+
+The optional semantic search model, downloaded after you choose it, is multilingual-e5-small (MIT License) by Wang et al., converted to Core ML:
+https://huggingface.co/intfloat/multilingual-e5-small

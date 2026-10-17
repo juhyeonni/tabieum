@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var indexService: IndexService?
     private let embeddingItem = NSMenuItem()
     private let embedding = EmbeddingState()
+    private let modelInstall = ModelInstall()
     private var backlinksPanel: BacklinksPanel?
     private var searchPanel: SearchPanel?
     private lazy var searchShortcut = ShortcutController(
@@ -90,6 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 onProgress: { progress in Task { @MainActor in self.showEmbedding(progress) } })
             service.start()
             indexService = service
+            if toggles.embeddingModel == .e5Small { installModel() }
             searchPanel = SearchPanel(indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier))
             backlinksPanel = BacklinksPanel(indexURL: indexURL)
         }
@@ -104,8 +106,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func showSettings() {
         let created = settingsWindow == nil
         let window = settingsWindow ?? makeWindow(title: "Settings", view: SettingsView(
-            status: status, toggles: toggles, ai: ai, embedding: embedding, shortcuts: [searchShortcut, copyMarkdownShortcut, copyLinkShortcut],
-            showOnboarding: { [weak self] in self?.showOnboarding() }, setRAG: { [weak self] in self?.setRAG($0) }))
+            status: status, toggles: toggles, ai: ai, embedding: embedding, install: modelInstall,
+            shortcuts: [searchShortcut, copyMarkdownShortcut, copyLinkShortcut],
+            showOnboarding: { [weak self] in self?.showOnboarding() }, setRAG: { [weak self] in self?.setRAG($0) },
+            chooseModel: { [weak self] in self?.chooseModel($0) }, retryInstall: { [weak self] in self?.installModel() }))
         window.styleMask.insert(.resizable)
         if created {
             window.setContentSize(NSSize(width: 800, height: 700))
@@ -131,6 +135,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             indexService?.requestSync()
             return
         }
+        if toggles.embeddingModel == .e5Small {
+            toggles.ragEnabled = true
+            installModel()
+            indexService?.requestSync()
+            return
+        }
         let alert = NSAlert()
         alert.messageText = "Download Apple's embedding model?"
         alert.informativeText = "RAG search needs Apple's on-device embedding model. macOS downloads it once. Your notes never leave this Mac."
@@ -143,6 +153,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             await AppleEmbedder.requestAssets()
             indexService?.requestSync()
         }
+    }
+
+    private func chooseModel(_ model: EmbeddingModel) {
+        guard model == .e5Small else {
+            toggles.embeddingModel = .apple
+            indexService?.requestSync()
+            Task {
+                await AppleEmbedder.requestAssets()
+                indexService?.requestSync()
+            }
+            return
+        }
+        guard E5Embedder.standardStore().isInstalled(.e5Small) || confirmModelDownload() else { return }
+        toggles.embeddingModel = .e5Small
+        installModel()
+        indexService?.requestSync()
+    }
+
+    private func confirmModelDownload() -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Download the multilingual-e5-small model?"
+        alert.informativeText = "It is \(ByteCountFormatter.string(fromByteCount: ModelSource.e5Small.downloadSize, countStyle: .file)) "
+            + "and downloaded once from huggingface.co. Only the model is downloaded; your notes never leave this Mac."
+        alert.addButton(withTitle: "Download")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    private func installModel() {
+        modelInstall.startIfNeeded { [weak self] in self?.indexService?.requestSync() }
     }
 
     private func showOnboarding() {

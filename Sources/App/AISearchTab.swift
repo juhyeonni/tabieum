@@ -6,14 +6,66 @@ final class EmbeddingState: ObservableObject {
     @Published var progress: EmbeddingProgress?
 }
 
+@MainActor
+final class ModelInstall: ObservableObject {
+    enum State: Equatable {
+        case idle
+        case downloading(Double)
+        case failed(String)
+    }
+
+    @Published private(set) var state = State.idle
+    private var task: Task<Void, Never>?
+
+    var isInstalled: Bool { E5Embedder.standardStore().isInstalled(.e5Small) }
+
+    func startIfNeeded(then done: @escaping @MainActor () -> Void) {
+        guard task == nil, !isInstalled else { return }
+        state = .downloading(0)
+        task = Task { [weak self] in
+            do {
+                try await ModelInstaller.install(.e5Small, into: E5Embedder.standardStore()) { fraction in
+                    Task { @MainActor in self?.state = .downloading(fraction) }
+                }
+                self?.state = .idle
+                done()
+            } catch {
+                self?.state = .failed("\(error)")
+            }
+            self?.task = nil
+        }
+    }
+}
+
 struct AISearchTab: View {
     @ObservedObject var toggles: FeatureToggles
     @ObservedObject var embedding: EmbeddingState
+    @ObservedObject var install: ModelInstall
     let setRAG: (Bool) -> Void
+    let chooseModel: (EmbeddingModel) -> Void
+    let retryInstall: () -> Void
 
     private var model: AISearchModel {
         AISearchModel(aiEnabled: toggles.aiEnabled, ragEnabled: toggles.ragEnabled,
                       mcpEnabled: toggles.mcpEnabled, progress: embedding.progress)
+    }
+
+    private static let downloadSize = ByteCountFormatter.string(fromByteCount: ModelSource.e5Small.downloadSize, countStyle: .file)
+
+    @ViewBuilder private var modelStatus: some View {
+        if toggles.embeddingModel == .e5Small {
+            switch install.state {
+            case .downloading(let fraction):
+                ProgressView(value: fraction) { Text("Downloading the model…").font(.callout) }
+            case .failed(let message):
+                Text("Download failed: \(message)").font(.callout).foregroundStyle(.red)
+                Button("Try Again", action: retryInstall)
+            case .idle:
+                Text(install.isInstalled ? "Installed. Runs on this Mac's Neural Engine; unloads after a minute without use."
+                                         : "Not installed yet.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var snippet: String {
@@ -29,6 +81,11 @@ struct AISearchTab: View {
             Card {
                 Toggle("Semantic search (RAG)", isOn: Binding(get: { toggles.ragEnabled }, set: setRAG))
                 Text(model.ragStatus).font(.callout).foregroundStyle(.secondary)
+                Picker("Embedding model", selection: Binding(get: { toggles.embeddingModel }, set: chooseModel)) {
+                    Text("Apple (built in)").tag(EmbeddingModel.apple)
+                    Text("multilingual-e5-small (\(Self.downloadSize) download)").tag(EmbeddingModel.e5Small)
+                }
+                modelStatus
             }
             Card {
                 Toggle("AI agents (MCP)", isOn: $toggles.mcpEnabled)

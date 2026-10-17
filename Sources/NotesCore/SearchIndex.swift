@@ -29,7 +29,7 @@ struct IndexedNote {
 
 /// A full-text index of readable notes in one SQLite file. It is a cache: everything in it can be rebuilt from Notes.
 public final class SearchIndex: @unchecked Sendable {
-    static let schemaVersion = 4
+    static let schemaVersion = 5
 
     public static func defaultURL(bundleIdentifier: String) -> URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -72,6 +72,7 @@ public final class SearchIndex: @unchecked Sendable {
                 text TEXT NOT NULL, modified REAL NOT NULL, model TEXT NOT NULL, vec BLOB NOT NULL)
             """)
         try connection.run("CREATE INDEX IF NOT EXISTS chunks_note ON chunks(note_id)")
+        try connection.run("CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID")
         try connection.run("PRAGMA user_version = \(Self.schemaVersion)")
         db = connection
     }
@@ -146,6 +147,14 @@ public final class SearchIndex: @unchecked Sendable {
                 try db.run("DELETE FROM notes WHERE id = ?1", [.text(id)])
             }
         }
+    }
+
+    func meta(_ key: String) throws -> String? {
+        try db.rows("SELECT value FROM meta WHERE key = ?1", [.text(key)]) { SQLiteConnection.text($0, 0) }.first
+    }
+
+    func setMeta(_ key: String, _ value: String) throws {
+        try db.run("INSERT INTO meta(key, value) VALUES(?1, ?2) ON CONFLICT(key) DO UPDATE SET value = ?2", [.text(key), .text(value)])
     }
 
     private static func version(_ db: SQLiteConnection) throws -> Int {
