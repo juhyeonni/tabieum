@@ -139,6 +139,19 @@ public indirect enum VimCommand: Equatable, Sendable {
     case search(String, forward: Bool)
     case searchNext(reverse: Bool)
     case searchWord(forward: Bool)
+    case repeatChange
+    case setMark(Character)
+    case jumpMark(Character)
+    case playMacro(Character)
+
+    var isChange: Bool {
+        switch self {
+        case .counted(let command, _): command.isChange
+        case .operate(let op, _), .operateLines(let op), .operateObject(let op, _): op != .yank
+        case .deleteChar, .put, .putBefore, .join, .toggleCase, .replaceChar, .insert: true
+        default: false
+        }
+    }
 }
 
 public enum VimDecision: Equatable, Sendable {
@@ -172,6 +185,16 @@ public struct VimEngine: Sendable {
     private var lastSearch: (pattern: String, forward: Bool)?
     private var lastFind: VimFind?
     private var visible: NSRange?
+    private var marks: [Character: Int] = [:]
+    private var macros: [Character: [VimKey]] = [:]
+    private var recording: (register: Character, keys: [VimKey])?
+    private var lastMacro: Character?
+    private var changeKeys: [VimKey] = []
+    private var lastChange: [VimKey]?
+    private var inChange = false
+    private var playDepth = 0
+
+    public var isRecording: Bool { recording != nil }
 
     /// What the command line shows while a search pattern is typed.
     public var searchPrompt: String? {
@@ -186,6 +209,40 @@ public struct VimEngine: Sendable {
     // MARK: - feed
 
     public mutating func feed(_ key: VimKey, at time: TimeInterval) -> VimDecision {
+        if let recording, idle, key.isPlain, key.character == "q" {
+            macros[recording.register] = recording.keys
+            self.recording = nil
+            return .consume(.none)
+        }
+        let wasRecording = recording != nil
+        let decision = step(key, at: time)
+        if wasRecording { recording?.keys.append(key) }
+        return decision
+    }
+
+    private var idle: Bool {
+        (mode == .normal || inVisual) && count == nil && op == nil && pending == nil
+    }
+
+    /// Feeds one key and notes which keys make up the last change, for `.`.
+    private mutating func step(_ key: VimKey, at time: TimeInterval) -> VimDecision {
+        let wasInsert = mode == .insert
+        if idle { changeKeys = [] }
+        changeKeys.append(key)
+        let decision = dispatch(key, at: time)
+        if wasInsert {
+            if inChange {
+                lastChange = changeKeys
+                inChange = mode == .insert
+            }
+        } else if case .consume(let command) = decision, command.isChange {
+            lastChange = changeKeys
+            inChange = mode == .insert
+        }
+        return decision
+    }
+
+    private mutating func dispatch(_ key: VimKey, at time: TimeInterval) -> VimDecision {
         switch mode {
         case .insert: feedInsert(key, at: time)
         case .search: feedSearch(key)
@@ -256,6 +313,22 @@ public struct VimEngine: Sendable {
         guard key.isPlain else { reset(); return .consume(.none) }
         let c = key.character
         if prefix == "r" { return .consume(c == "\n" ? cancel() : finish(.replaceChar(c))) }
+        if prefix == "m" || prefix == "'", let prefix {
+            guard c.isRegisterName else { return .consume(cancel()) }
+            return .consume(finish(prefix == "m" ? .setMark(c) : .jumpMark(c)))
+        }
+        if prefix == "q" {
+            reset()
+            if c.isRegisterName { recording = (c, []) }
+            return .consume(.none)
+        }
+        if prefix == "@" {
+            guard let register = c == "@" ? lastMacro : (c.isRegisterName ? c : nil) else {
+                return .consume(cancel())
+            }
+            lastMacro = register
+            return .consume(finish(.playMacro(register)))
+        }
         if prefix == "g" { return .consume(c == "g" ? motionOrOperate(.firstLine) : cancel()) }
         if let prefix, "ftFT".contains(prefix) {
             guard c != "\n" else { return .consume(cancel()) }
@@ -329,7 +402,8 @@ public struct VimEngine: Sendable {
             return .none
         }
         switch c {
-        case "r": pending = c; return .none
+        case "r", "m", "'", "q", "@": pending = c; return .none
+        case ".": return finish(.repeatChange)
         case "x": return finish(.deleteChar)
         case "p": return finish(.put)
         case "P": return finish(.putBefore)
@@ -374,11 +448,93 @@ public struct VimEngine: Sendable {
     // MARK: - execute
 
     public mutating func execute(_ command: VimCommand, on buffer: VimBuffer) -> [VimAction] {
-        guard case .counted(let inner, let n) = command else { return run(command, 1, on: buffer) }
-        return run(inner, n, on: buffer)
+        var inner = command, n = 1
+        if case .counted(let c, let k) = command { (inner, n) = (c, k) }
+        switch inner {
+        case .repeatChange:
+            guard let keys = lastChange else { return [] }
+            return play(keys, on: buffer)
+        case .playMacro(let register):
+            guard let keys = macros[register] else { return [] }
+            var work = buffer
+            var actions: [VimAction] = []
+            for _ in 0..<n {
+                let played = play(keys, on: work)
+                work.apply(played)
+                actions += played
+            }
+            return actions
+        default:
+            let actions = runCommand(inner, n, on: buffer)
+            shiftMarks(actions)
+            return actions
+        }
     }
 
-    private mutating func run(_ command: VimCommand, _ n: Int, on buffer: VimBuffer) -> [VimAction] {
+    /// Runs keys through the same feed and execute path as typed ones, on a copy that follows the edits.
+    private mutating func play(_ keys: [VimKey], on buffer: VimBuffer) -> [VimAction] {
+        guard playDepth < 8 else { return [] }
+        playDepth += 1
+        defer { playDepth -= 1 }
+        var work = buffer
+        var actions: [VimAction] = []
+        for (i, key) in keys.enumerated() {
+            let done: [VimAction]
+            switch step(key, at: Double(i) * 0.01) {
+            case .consume(let command): done = execute(command, on: work)
+            case .passThrough: done = typed(key, in: work)
+            }
+            work.apply(done)
+            actions += done
+        }
+        return merged(actions)
+    }
+
+    private mutating func typed(_ key: VimKey, in buffer: VimBuffer) -> [VimAction] {
+        guard mode == .insert, key.isPlain else { return [] }
+        let at = buffer.selection.location
+        let actions: [VimAction]
+        switch key.character {
+        case "\u{7F}":
+            guard at > 0 else { return [] }
+            actions = [.delete((buffer.text as NSString).rangeOfComposedCharacterSequence(at: at - 1))]
+        case "\r", "\n":
+            actions = [.insert("\n", at: at)]
+        default:
+            actions = [.insert(String(key.character), at: at)]
+        }
+        shiftMarks(actions)
+        return actions
+    }
+
+    /// Typed characters in a row become one paste.
+    private func merged(_ actions: [VimAction]) -> [VimAction] {
+        var out: [VimAction] = []
+        for action in actions {
+            if case .insert(let s, let at) = action, s != "\n",
+               case .insert(let p, let start)? = out.last, p != "\n", start + p.utf16.count == at {
+                out[out.count - 1] = .insert(p + s, at: start)
+            } else {
+                out.append(action)
+            }
+        }
+        return out
+    }
+
+    private mutating func shiftMarks(_ actions: [VimAction]) {
+        for action in actions {
+            switch action {
+            case .delete(let r):
+                marks = marks.mapValues { $0 >= NSMaxRange(r) ? $0 - r.length : min($0, r.location) }
+            case .insert(let s, let at):
+                marks = marks.mapValues { $0 >= at ? $0 + s.utf16.count : $0 }
+            default:
+                break
+            }
+        }
+    }
+
+    private mutating func runCommand(_ command: VimCommand, _ n: Int, on buffer: VimBuffer) -> [VimAction] {
         let t = VimText(buffer.text)
         visible = buffer.visible
         let goal = self.goal
@@ -390,8 +546,17 @@ public struct VimEngine: Sendable {
         case .none:
             return []
 
-        case .counted:
+        case .counted, .repeatChange, .playMacro:
             return []
+
+        case .setMark(let register):
+            marks[register] = t.offsets[cur]
+            return []
+
+        case .jumpMark(let register):
+            guard let offset = marks[register], offset <= t.offsets[t.count] else { return [] }
+            let new = t.clamp(t.index(at: offset))
+            return [.select(t.range(new, new))]
 
         case .motion(let motion):
             guard let anchor = visualAnchor else {
@@ -1085,4 +1250,8 @@ public func vimSearch(in text: String, pattern: String, from offset: Int, forwar
     let end = min(max(offset - 1 + pattern.utf16.count, 0), ns.length)
     return find(options.union(.backwards), in: NSRange(location: 0, length: end))
         ?? find(options.union(.backwards), in: all)
+}
+
+private extension Character {
+    var isRegisterName: Bool { ("a"..."z").contains(self) }
 }
