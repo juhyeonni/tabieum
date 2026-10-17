@@ -1,4 +1,4 @@
-# 기획서: Apple Notes용 로컬 우선 확장 앱 (가칭 `NoteKit`)
+# 기획서: Apple Notes용 로컬 우선 확장 앱 (`tabieum`)
 
 ## 1. 한 줄 요약
 
@@ -71,7 +71,7 @@ Apple Notes를 보강하는 기능(AX 오버레이, NoteStore.sqlite 읽기, App
 ## 5. 아키텍처
 
 ```
-┌───────────── NoteKit.app (non-sandboxed) ───────────────────────────┐
+┌───────────── tabieum.app (non-sandboxed) ───────────────────────────┐
 │ Core                                                                │
 │  NotesReader ── NoteStore.sqlite (RO) ── ProtobufDecoder → Markdown │
 │  Indexer ───── index.sqlite (GRDB: FTS5 [+ sqlite-vec])             │
@@ -119,6 +119,6 @@ Apple Notes를 보강하는 기능(AX 오버레이, NoteStore.sqlite 읽기, App
    - 확장 기능(Vim, 검색, RAG, AI)은 Mac에서만 동작한다. 모바일에서는 순정 Notes를 쓴다.
    - RAG 인덱스는 Mac마다 로컬에서 따로 만든다(동기화하지 않음).
    - Notes 내부 포맷과 AX 동작에 종속된다(7장 리스크).
-2. **공개 범위: 오픈소스(MIT).** 소유자가 확인하기 전까지는 배포하지 않는다.
+2. **공개 범위: 오픈소스(Apache-2.0).** 소유자가 확인하기 전까지는 배포하지 않는다.
 3. **최소 macOS 버전: 15.**
-4. **이름: 미정.** 이름 충돌을 조사한 뒤 정한다. 그전까지 `NoteKit`은 임시 이름이며 설정 파일 한 곳에만 둔다.
+4. **이름: `tabieum`.** 탭(색인표)과 이음(연결)을 합친 이름이다. 이전 임시 이름 `NoteKit`은 같은 분야의 인기 프로젝트와 겹쳐서 버렸다. 이름은 `Config/product.env` 한 곳에만 둔다.

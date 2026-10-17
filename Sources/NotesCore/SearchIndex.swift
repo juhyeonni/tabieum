@@ -29,7 +29,7 @@ struct IndexedNote {
 
 /// A full-text index of readable notes in one SQLite file. It is a cache: everything in it can be rebuilt from Notes.
 public final class SearchIndex: @unchecked Sendable {
-    static let schemaVersion = 4
+    static let schemaVersion = 5
 
     public static func defaultURL(bundleIdentifier: String) -> URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -72,22 +72,41 @@ public final class SearchIndex: @unchecked Sendable {
                 text TEXT NOT NULL, modified REAL NOT NULL, model TEXT NOT NULL, vec BLOB NOT NULL)
             """)
         try connection.run("CREATE INDEX IF NOT EXISTS chunks_note ON chunks(note_id)")
+        try connection.run("CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID")
         try connection.run("PRAGMA user_version = \(Self.schemaVersion)")
         db = connection
     }
 
-    /// Terms are ANDed prefix matches; every term is quoted, so user input never reaches FTS5 syntax.
+    /// The notes with every term first, then those with only some of them, the better match first within each group.
+    /// Every term is a quoted prefix match, so user input never reaches FTS5 syntax.
     public func search(_ query: String, limit: Int = 20) throws -> [SearchResult] {
-        let terms = query.split(whereSeparator: \.isWhitespace)
-            .map { "\"" + $0.replacingOccurrences(of: "\"", with: "\"\"") + "\"*" }
+        let terms = query.split(whereSeparator: \.isWhitespace).map(String.init)
         guard !terms.isEmpty else { return [] }
-        return try db.rows("""
+        let all = try match(terms.map { "(" + Self.spellings($0).joined(separator: " OR ") + ")" }.joined(separator: " AND "), limit)
+        let useful = terms.filter { $0.count >= 2 }
+        guard terms.count > 1, !useful.isEmpty, all.count < limit else { return all }
+        let some = try match(useful.flatMap(Self.spellings).joined(separator: " OR "), limit)
+        let seen = Set(all.map(\.id))
+        return Array((all + some.filter { !seen.contains($0.id) }).prefix(limit))
+    }
+
+    /// The term as a prefix match, and for a Korean word its shorter stems: a word is often written with an ending
+    /// the note does not have (조깅했던 for 조깅), and a prefix match already finds the longer forms.
+    static func spellings(_ term: String) -> [String] {
+        func quoted(_ text: String) -> String { "\"" + text.replacingOccurrences(of: "\"", with: "\"\"") + "\"*" }
+        guard let last = term.unicodeScalars.last, (0xAC00...0xD7A3).contains(last.value) else { return [quoted(term)] }
+        let stems = [1, 2].filter { term.count - $0 >= 2 }.map { String(term.dropLast($0)) }
+        return ([term] + stems).map(quoted)
+    }
+
+    private func match(_ expression: String, _ limit: Int) throws -> [SearchResult] {
+        try db.rows("""
             SELECT n.id, notes_fts.title, notes_fts.folder, n.modified, snippet(notes_fts, 1, '', '', '…', 16), notes_fts.owner
             FROM notes_fts JOIN notes n ON n.rowid = notes_fts.rowid
             WHERE notes_fts MATCH ?1
             ORDER BY bm25(notes_fts, 10.0, 1.0, 0.0, 0.0)
             LIMIT ?2
-            """, [.text(terms.joined(separator: " AND ")), .int(Int64(limit))]) {
+            """, [.text(expression), .int(Int64(limit))]) {
             SearchResult(id: SQLiteConnection.text($0, 0), title: SQLiteConnection.text($0, 1),
                          folder: SQLiteConnection.text($0, 2),
                          modified: Date(timeIntervalSinceReferenceDate: sqlite3_column_double($0, 3)),
@@ -146,6 +165,14 @@ public final class SearchIndex: @unchecked Sendable {
                 try db.run("DELETE FROM notes WHERE id = ?1", [.text(id)])
             }
         }
+    }
+
+    func meta(_ key: String) throws -> String? {
+        try db.rows("SELECT value FROM meta WHERE key = ?1", [.text(key)]) { SQLiteConnection.text($0, 0) }.first
+    }
+
+    func setMeta(_ key: String, _ value: String) throws {
+        try db.run("INSERT INTO meta(key, value) VALUES(?1, ?2) ON CONFLICT(key) DO UPDATE SET value = ?2", [.text(key), .text(value)])
     }
 
     private static func version(_ db: SQLiteConnection) throws -> Int {

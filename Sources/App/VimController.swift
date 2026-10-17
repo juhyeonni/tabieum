@@ -4,7 +4,7 @@ import NotesCore
 import os
 
 private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "NotesExtension", category: "vim")
-private let latencyLog = Logger(subsystem: "dev.juhyeonni.notekit", category: "vim-latency")
+private let latencyLog = Logger(subsystem: "dev.juhyeonni.tabieum", category: "vim-latency")
 
 private let tapCallback: CGEventTapCallBack = { _, type, event, refcon in
     guard let refcon else { return Unmanaged.passUnretained(event) }

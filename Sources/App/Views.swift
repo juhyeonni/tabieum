@@ -81,9 +81,12 @@ struct SettingsView: View {
     @ObservedObject var toggles: FeatureToggles
     let ai: AIFeature
     let embedding: EmbeddingState
+    let install: ModelInstall
     let shortcuts: [ShortcutController]
     let showOnboarding: () -> Void
     let setRAG: (Bool) -> Void
+    let chooseModel: (EmbeddingModel) -> Void
+    let retryInstall: () -> Void
 
     var body: some View {
         TabView {
@@ -122,7 +125,8 @@ struct SettingsView: View {
             .tabItem { Label("Editor", systemImage: "keyboard") }
             SettingsPage { AITab(toggles: toggles, feature: ai) }
                 .tabItem { Label("AI Assistant", systemImage: "sparkles") }
-            AISearchTab(toggles: toggles, embedding: embedding, setRAG: setRAG)
+            AISearchTab(toggles: toggles, embedding: embedding, install: install, setRAG: setRAG,
+                        chooseModel: chooseModel, retryInstall: retryInstall)
                 .tabItem { Label("Search & Agents", systemImage: "magnifyingglass") }
         }
         .frame(minWidth: 760, minHeight: 320)
