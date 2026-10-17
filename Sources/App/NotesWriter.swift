@@ -37,9 +37,9 @@ struct AppleScriptNotesWriter: NoteWriter {
         }
     }
 
-    func createNote(title: String, html: String, in target: NoteTarget) async throws {
-        let heading = title.replacing("&", with: "&amp;").replacing("<", with: "&lt;").replacing(">", with: "&gt;")
-        let body = "<div><h1>\(heading)</h1></div>" + html
+    func createNote(title: String?, html: String, in target: NoteTarget) async throws {
+        let heading = title?.replacing("&", with: "&amp;").replacing("<", with: "&lt;").replacing(">", with: "&gt;")
+        let body = heading.map { "<div><h1>\($0)</h1></div>" + html } ?? html
         let handle = try await Self.run("""
         tell application "Notes"
             set created to make new note at \(Self.folder(target)) with properties {body:\(Self.quoted(body))}

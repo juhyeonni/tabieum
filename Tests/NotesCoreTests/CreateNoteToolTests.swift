@@ -39,7 +39,7 @@ func running(_ value: WriteSettings, writer: FakeWriter = FakeWriter(), confirme
     let listed = try tools(mcp(settings(), channel: NoChannel(error: .appNotRunning)))
     let tool = try #require(listed.first { $0["name"] as? String == "create_note" })
     let schema = try #require(tool["inputSchema"] as? [String: Any])
-    #expect(Set(schema["required"] as? [String] ?? []) == ["title", "body"])
+    #expect(schema["required"] as? [String] == ["body"])
     let annotations = try #require(tool["annotations"] as? [String: Bool])
     #expect(annotations == ["readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false])
     #expect(listed.compactMap { $0["name"] as? String }.prefix(3) == ["search_notes", "get_note", "list_backlinks"])
@@ -121,6 +121,21 @@ func running(_ value: WriteSettings, writer: FakeWriter = FakeWriter(), confirme
     #expect(confirmer.timesAsked == 1)
 }
 
+@Test func aCreateWithoutATitleSendsTheBodyWhoseFirstLineIsTheTitle() throws {
+    let writer = FakeWriter()
+    let value = settings { $0.consent = .always }
+    let live = try running(value, writer: writer)
+    defer {
+        live.server.stop()
+        try? FileManager.default.removeItem(at: live.directory)
+    }
+    let server = mcp(value, channel: live.client)
+    #expect(try !call(server, ##"{"body":"# Plan\n\nship it"}"##).isError)
+    #expect(try !call(server, ##"{"title":"","body":"# Again"}"##).isError)
+    #expect(writer.calls.map(\.html) == ["<h1>Plan</h1><div>ship it</div>", "<h1>Again</h1>"])
+    #expect(writer.calls.allSatisfy { $0.title == nil })
+}
+
 @Test func badArgumentsSendNothing() throws {
     let writer = FakeWriter()
     let live = try running(settings { $0.consent = .always }, writer: writer)
@@ -129,7 +144,8 @@ func running(_ value: WriteSettings, writer: FakeWriter = FakeWriter(), confirme
         try? FileManager.default.removeItem(at: live.directory)
     }
     let server = mcp(settings { $0.consent = .always }, channel: live.client)
-    for arguments in [#"{"body":"b"}"#, #"{"title":"","body":"b"}"#, #"{"title":"T"}"#, #"{"title":"T","body":3}"#, "{}"] {
+    for arguments in [#"{"title":"T"}"#, #"{"title":"T","body":3}"#, #"{"title":3,"body":"b"}"#, #"{"body":"  \n"}"#,
+                      #"{"title":"","body":""}"#, "{}"] {
         #expect(try call(server, arguments).isError)
     }
     #expect(writer.calls.isEmpty)

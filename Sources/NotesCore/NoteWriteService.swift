@@ -35,7 +35,7 @@ public struct ResolvedNote: Equatable, Sendable {
 /// Writes into Notes itself; the real one sends Apple events, so tests use a fake.
 public protocol NoteWriter: Sendable {
     func folderExists(_ target: NoteTarget) async throws -> Bool
-    func createNote(title: String, html: String, in target: NoteTarget) async throws
+    func createNote(title: String?, html: String, in target: NoteTarget) async throws
     /// The note with this database identifier, only if it is inside `scope`, not locked and in Notes; else nil.
     func resolveNote(identifier: String, scope: WriteScope, target: NoteTarget) async throws -> ResolvedNote?
     func replaceBody(of note: ResolvedNote, with html: String) async throws
@@ -100,8 +100,9 @@ public struct NoteWriteService: Sendable {
         else { return Self.reply(error: "Not a valid write request.") }
         switch action {
         case .create:
-            guard let title = request["title"] as? String, !title.isEmpty, let html = request["html"] as? String else {
-                return Self.reply(error: "create needs a title and an html body.")
+            let title = (request["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            guard let html = request["html"] as? String, title != nil || !html.isEmpty else {
+                return Self.reply(error: "create needs an html body, or a title.")
             }
             return await create(title: title, html: html, session: session)
         case .edit:
@@ -122,7 +123,7 @@ public struct NoteWriteService: Sendable {
         return nil
     }
 
-    private func create(title: String, html: String, session: WriteSession) async -> String {
+    private func create(title: String?, html: String, session: WriteSession) async -> String {
         let settings = settings()
         if let refusal = gate(.create, settings) { return Self.reply(error: refusal) }
         guard !settings.targetFolder.isEmpty else { return Self.reply(error: "No target folder is chosen. Choose one in \(productName) Settings.") }
@@ -206,8 +207,9 @@ public struct NoteWriteService: Sendable {
         }
     }
 
-    static func preview(title: String, html: String) -> String {
+    static func preview(title: String?, html: String) -> String {
         let text = html.replacing(/<[^>]*>/, with: " ").split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard let title else { return String(text.prefix(800)) }
         return "\(title)\n\n\(text.prefix(800))"
     }
 

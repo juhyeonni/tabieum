@@ -5,15 +5,15 @@ import Testing
 
 final class FakeWriter: NoteWriter, @unchecked Sendable {
     private let lock = NSLock()
-    private var created: [(title: String, html: String, target: NoteTarget)] = []
+    private var created: [(title: String?, html: String, target: NoteTarget)] = []
     var folderExists = true
     var failure: WriteFailure?
 
-    var calls: [(title: String, html: String, target: NoteTarget)] { lock.withLock { created } }
+    var calls: [(title: String?, html: String, target: NoteTarget)] { lock.withLock { created } }
 
     func folderExists(_ target: NoteTarget) async throws -> Bool { folderExists }
 
-    func createNote(title: String, html: String, in target: NoteTarget) async throws {
+    func createNote(title: String?, html: String, in target: NoteTarget) async throws {
         if let failure { throw failure }
         lock.withLock { created.append((title, html, target)) }
     }
@@ -188,9 +188,18 @@ private func freshSuite() -> UserDefaults {
     #expect(!reply.ok && reply.error.contains("Automation"))
 }
 
+@Test func aCreateWithoutATitleSendsTheBodyAsIs() async throws {
+    let writer = FakeWriter()
+    let line = #"{"action":"create","html":"<h1>Plan</h1>"}"#
+    let reply = try parse(await service(settings { $0.consent = .always }, writer: writer).handle(line, session: WriteSession()))
+    #expect(reply.ok && writer.calls.count == 1)
+    #expect(writer.calls.first?.title == nil && writer.calls.first?.html == "<h1>Plan</h1>")
+}
+
 @Test func malformedRequestsGetAnErrorReply() async throws {
     let target = service(settings())
-    for line in ["not json", #"{"action":"nope"}"#, #"{"action":"create","title":""}"#, #"{"action":"delete","id":"x"}"#] {
+    for line in ["not json", #"{"action":"nope"}"#, #"{"action":"create","title":""}"#, #"{"action":"create","html":""}"#,
+                 #"{"action":"delete","id":"x"}"#] {
         #expect(try !parse(await target.handle(line, session: WriteSession())).ok)
     }
 }
