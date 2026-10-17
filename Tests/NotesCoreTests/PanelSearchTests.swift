@@ -26,18 +26,20 @@ private func fixture() throws -> SearchIndex {
 @Test func panelSearchWithoutAnEmbedderIsWordSearchOnly() throws {
     let index = try fixture()
     #expect(try index.panelSearch("car", embedder: nil).isEmpty)
-    #expect(try index.panelSearch("automobile", embedder: nil).map(\.id) == ["car"])
+    #expect(try index.panelSearch("automobile", embedder: nil).map(\.note.id) == ["car"])
+    #expect(try index.panelSearch("automobile", embedder: nil).allSatisfy { !$0.byMeaningOnly })
 }
 
 @Test func panelSearchWithAnEmbedderAlsoFindsByMeaning() throws {
     let index = try fixture()
-    #expect(try index.panelSearch("car", embedder: CarEmbedder()).map(\.id) == ["car"])
+    let hits = try index.panelSearch("car", embedder: CarEmbedder())
+    #expect(hits.map(\.note.id) == ["car"] && hits.first?.byMeaningOnly == true)
 }
 
 @Test func panelSearchKeepsWordHitsWhenTheEmbedderHasNoVectors() throws {
     let index = try fixture()
     let silent = CarEmbedder()
-    #expect(try index.panelSearch("kilometres", embedder: silent).map(\.id).contains("run"))
+    #expect(try index.panelSearch("kilometres", embedder: silent).map(\.note.id).contains("run"))
 }
 
 @Test func semanticPanelSearchIsOffByDefaultAndPersists() {

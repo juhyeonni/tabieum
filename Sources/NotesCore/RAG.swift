@@ -199,6 +199,12 @@ public enum EmbedOutcome: Equatable, Sendable {
     case finished, paused, waitingForModel
 }
 
+public struct PanelHit: Equatable, Sendable {
+    public let note: SearchResult
+    /// True when no word of the query matched; the note was found only by its meaning.
+    public let byMeaningOnly: Bool
+}
+
 public struct HybridResult: Equatable, Sendable {
     public let note: SearchResult
     /// The note's best-matching chunk; nil when the note matched only by full text.
@@ -351,9 +357,22 @@ extension SearchIndex {
     }
 
     /// What the search panel lists: the full-text hits, or the hybrid order when an embedder is given.
-    public func panelSearch(_ query: String, embedder: Embedder?, limit: Int = 50) throws -> [SearchResult] {
-        guard let embedder else { return try search(query, limit: limit) }
-        return try hybridSearch(query, embedder: embedder, limit: limit).map(\.note)
+    /// Notes found only by meaning are marked, and at most `maxMeaningOnly` of them are listed: a match by meaning
+    /// has no score that tells a real one from a weak one.
+    public func panelSearch(_ query: String, embedder: Embedder?, limit: Int = 50, maxMeaningOnly: Int = 20) throws -> [PanelHit] {
+        guard let embedder else { return try search(query, limit: limit).map { PanelHit(note: $0, byMeaningOnly: false) } }
+        let words = Set(try search(query, limit: 50).map(\.id))
+        var meaningOnly = 0
+        var hits: [PanelHit] = []
+        for result in try hybridSearch(query, embedder: embedder, limit: limit) {
+            let byMeaningOnly = !words.contains(result.note.id)
+            if byMeaningOnly {
+                guard meaningOnly < maxMeaningOnly else { continue }
+                meaningOnly += 1
+            }
+            hits.append(PanelHit(note: result.note, byMeaningOnly: byMeaningOnly))
+        }
+        return hits
     }
 
     private func noteResult(_ id: String, snippet: String) throws -> SearchResult? {

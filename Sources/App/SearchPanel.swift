@@ -5,7 +5,7 @@ import SwiftUI
 @MainActor
 final class SearchModel: ObservableObject {
     @Published var query = "" { didSet { run() } }
-    @Published private(set) var hits: [SearchResult] = []
+    @Published private(set) var hits: [PanelHit] = []
     @Published var selection = 0
     private let indexURL: URL
     private let embedder: @MainActor () -> Embedder?
@@ -112,10 +112,10 @@ private struct SearchView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(model.hits.enumerated()), id: \.element.id) { index, hit in
+                        ForEach(Array(model.hits.enumerated()), id: \.element.note.id) { index, hit in
                             row(hit, selected: index == model.selection)
                                 .id(index)
-                                .onTapGesture(count: 2) { open(hit) }
+                                .onTapGesture(count: 2) { open(hit.note) }
                                 .onTapGesture { model.selection = index }
                         }
                     }
@@ -130,18 +130,22 @@ private struct SearchView: View {
 
     private func openSelected() {
         guard model.hits.indices.contains(model.selection) else { return }
-        open(model.hits[model.selection])
+        open(model.hits[model.selection].note)
     }
 
-    private func row(_ hit: SearchResult, selected: Bool) -> some View {
+    private func row(_ hit: PanelHit, selected: Bool) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
-                Text(hit.title.isEmpty ? "Untitled" : hit.title).bold().lineLimit(1)
+                Text(hit.note.title.isEmpty ? "Untitled" : hit.note.title).bold().lineLimit(1)
+                if hit.byMeaningOnly {
+                    Text("Similar in meaning").font(.caption2).foregroundStyle(.secondary)
+                        .padding(.horizontal, 5).background(.quaternary, in: Capsule())
+                }
                 Spacer()
-                Text("\(hit.folder) · \(hit.modified.formatted(date: .abbreviated, time: .omitted))")
+                Text("\(hit.note.folder) · \(hit.note.modified.formatted(date: .abbreviated, time: .omitted))")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Text(hit.snippet).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+            Text(hit.note.snippet).font(.callout).foregroundStyle(.secondary).lineLimit(2)
         }
         .padding(.horizontal, 12).padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
