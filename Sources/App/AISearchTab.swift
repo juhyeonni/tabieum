@@ -22,8 +22,8 @@ struct AISearchTab: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 20) {
-            ScrollView {
+        ScrollView(.vertical) {
+            HStack(alignment: .top, spacing: 20) {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Search index").bold()
@@ -40,30 +40,34 @@ struct AISearchTab: View {
                     }
                     VStack(alignment: .leading, spacing: 4) {
                         Toggle("AI agents (MCP)", isOn: $toggles.mcpEnabled)
-                        Text(snippet).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                        ScrollView(.horizontal) {
+                            Text(snippet).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .padding(.bottom, 8)
+                        }
                         Button("Copy config") {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(snippet, forType: .string)
                         }
                     }
                 }
-            }
-            VStack(alignment: .leading, spacing: 10) {
-                Text("What works with the current switches").bold()
-                ForEach(model.rows, id: \.feature) { row in
-                    HStack(alignment: .top) {
-                        Image(systemName: row.works ? "checkmark.circle.fill" : "xmark.circle")
-                            .foregroundStyle(row.works ? .green : .secondary)
-                        VStack(alignment: .leading) {
-                            Text(row.feature)
-                            Text(row.note).font(.callout).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("What works with the current switches").bold()
+                    ForEach(model.rows, id: \.feature) { row in
+                        HStack(alignment: .top) {
+                            Image(systemName: row.works ? "checkmark.circle.fill" : "xmark.circle")
+                                .foregroundStyle(row.works ? .green : .secondary)
+                            VStack(alignment: .leading) {
+                                Text(row.feature)
+                                Text(row.note).font(.callout).foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
-                Spacer()
+                .frame(width: 200)
             }
-            .frame(width: 200)
+            .padding()
         }
-        .padding()
     }
 }

@@ -87,6 +87,7 @@ struct SettingsView: View {
 
     var body: some View {
         TabView {
+            ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 16) {
                 PermissionRows(status: status)
                 Button("Show Permissions Onboarding…", action: showOnboarding)
@@ -104,6 +105,8 @@ struct SettingsView: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
             .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            }
             .tabItem { Label("General", systemImage: "gearshape") }
             featureTab($toggles.vimEnabled, title: "Enable Vim mode",
                        detail: "Vim-style modal editing inside Notes.") {
@@ -114,7 +117,7 @@ struct SettingsView: View {
             AISearchTab(toggles: toggles, embedding: embedding, ai: ai, setRAG: setRAG)
                 .tabItem { Label("AI & Search", systemImage: "sparkles") }
         }
-        .frame(width: 760)
+        .frame(minWidth: 760, minHeight: 320)
         .padding()
     }
 
