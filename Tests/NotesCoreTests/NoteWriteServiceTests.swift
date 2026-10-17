@@ -17,6 +17,23 @@ final class FakeWriter: NoteWriter, @unchecked Sendable {
         if let failure { throw failure }
         lock.withLock { created.append((title, html, target)) }
     }
+
+    var resolved: ResolvedNote?
+    private var lookups: [(id: String, scope: WriteScope, target: NoteTarget)] = []
+    private var edits: [(note: ResolvedNote, html: String)] = []
+
+    var lookupCalls: [(id: String, scope: WriteScope, target: NoteTarget)] { lock.withLock { lookups } }
+    var editCalls: [(note: ResolvedNote, html: String)] { lock.withLock { edits } }
+
+    func resolveNote(identifier: String, scope: WriteScope, target: NoteTarget) async throws -> ResolvedNote? {
+        lock.withLock { lookups.append((identifier, scope, target)) }
+        return resolved
+    }
+
+    func replaceBody(of note: ResolvedNote, with html: String) async throws {
+        if let failure { throw failure }
+        lock.withLock { edits.append((note, html)) }
+    }
 }
 
 final class FakeConfirmer: WriteConfirmer, @unchecked Sendable {

@@ -27,7 +27,7 @@ private struct NoChannel: WriteChannel {
     func send(_ line: String) throws -> String { throw error }
 }
 
-private func running(_ value: WriteSettings, writer: FakeWriter = FakeWriter(), confirmer: FakeConfirmer = FakeConfirmer())
+func running(_ value: WriteSettings, writer: FakeWriter = FakeWriter(), confirmer: FakeConfirmer = FakeConfirmer())
     throws -> (server: WriteSocketServer, client: WriteSocketClient, directory: URL) {
     let url = shortSocketURL()
     let server = WriteSocketServer(path: url, service: service(value, writer: writer, confirmer: confirmer))

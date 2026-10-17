@@ -15,10 +15,30 @@ public enum WriteFailure: Error, Equatable, Sendable {
     case failed(String)
 }
 
+/// A note found in Notes, in the shape an edit needs to judge it.
+public struct ResolvedNote: Equatable, Sendable {
+    public let handle: String
+    public let title: String
+    public let folder: String
+    public let modified: Date
+    public let hasAttachments: Bool
+
+    public init(handle: String, title: String, folder: String, modified: Date, hasAttachments: Bool) {
+        self.handle = handle
+        self.title = title
+        self.folder = folder
+        self.modified = modified
+        self.hasAttachments = hasAttachments
+    }
+}
+
 /// Writes into Notes itself; the real one sends Apple events, so tests use a fake.
 public protocol NoteWriter: Sendable {
     func folderExists(_ target: NoteTarget) async throws -> Bool
     func createNote(title: String?, html: String, in target: NoteTarget) async throws
+    /// The note with this database identifier, only if it is inside `scope`, not locked and in Notes; else nil.
+    func resolveNote(identifier: String, scope: WriteScope, target: NoteTarget) async throws -> ResolvedNote?
+    func replaceBody(of note: ResolvedNote, with html: String) async throws
 }
 
 public struct ConfirmRequest: Equatable, Sendable {
@@ -85,16 +105,27 @@ public struct NoteWriteService: Sendable {
                 return Self.reply(error: "create needs an html body, or a title.")
             }
             return await create(title: title, html: html, session: session)
-        case .edit, .delete:
+        case .edit:
+            guard let id = request["id"] as? String, !id.isEmpty, let html = request["html"] as? String,
+                  let expected = (request["expected_modified"] as? String).flatMap({ ISO8601DateFormatter().date(from: $0) })
+            else { return Self.reply(error: "edit needs an id, an html body and an ISO 8601 expected_modified.") }
+            return await edit(id: id, html: html, expectedModified: expected, session: session)
+        case .delete:
             return Self.reply(error: "\(action.rawValue) is not supported yet.")
         }
     }
 
+    /// nil when the request may go on, else the reason it may not: the switches that apply to every action.
+    private func gate(_ action: WriteAction, _ settings: WriteSettings) -> String? {
+        guard settings.enabled else { return "Writing to Notes is off. Turn it on in \(productName) Settings." }
+        guard settings.allowedActions.contains(action) else { return "\(action.rawValue.capitalized) is not allowed in \(productName) Settings." }
+        guard settings.consent != .never else { return "The owner has set writing to Notes to never allow." }
+        return nil
+    }
+
     private func create(title: String?, html: String, session: WriteSession) async -> String {
         let settings = settings()
-        guard settings.enabled else { return Self.reply(error: "Writing to Notes is off. Turn it on in \(productName) Settings.") }
-        guard settings.allowedActions.contains(.create) else { return Self.reply(error: "Creating notes is not allowed in \(productName) Settings.") }
-        guard settings.consent != .never else { return Self.reply(error: "The owner has set writing to Notes to never allow.") }
+        if let refusal = gate(.create, settings) { return Self.reply(error: refusal) }
         guard !settings.targetFolder.isEmpty else { return Self.reply(error: "No target folder is chosen. Choose one in \(productName) Settings.") }
         let target = NoteTarget(account: settings.targetAccount, folder: settings.targetFolder)
         do {
@@ -107,11 +138,44 @@ public struct NoteWriteService: Sendable {
             let body = settings.marker ? html + "<div>Created by an AI agent through \(productName).</div>" : html
             try await writer.createNote(title: title, html: body, in: target)
             return Self.reply(ok: true)
-        } catch WriteFailure.automationDenied {
-            return Self.reply(error: "\(productName) is not allowed to control Notes. Allow it under Automation in System Settings.")
         } catch {
-            return Self.reply(error: "Notes could not write the note: \(error)")
+            return failureReply(error)
         }
+    }
+
+    private func edit(id: String, html: String, expectedModified: Date, session: WriteSession) async -> String {
+        let settings = settings()
+        if let refusal = gate(.edit, settings) { return Self.reply(error: refusal) }
+        if settings.scope == .targetFolder, settings.targetFolder.isEmpty {
+            return Self.reply(error: "No target folder is chosen. Choose one in \(productName) Settings.")
+        }
+        let target = NoteTarget(account: settings.targetAccount, folder: settings.targetFolder)
+        do {
+            guard let note = try await writer.resolveNote(identifier: id, scope: settings.scope, target: target) else {
+                return Self.reply(error: "No note with that id can be edited.")
+            }
+            guard !note.hasAttachments else {
+                return Self.reply(error: "This note has attachments, which an edit would remove, so it was not changed.")
+            }
+            guard abs(note.modified.timeIntervalSince(expectedModified)) <= 1.5 else {
+                return Self.reply(error: "The note changed after it was read. Read it again, then retry the edit.")
+            }
+            let place = NoteTarget(account: "", folder: note.folder)
+            if let refusal = await consent(.edit, target: place, preview: Self.preview(title: note.title, html: html), settings, session) {
+                return Self.reply(error: refusal)
+            }
+            try await writer.replaceBody(of: note, with: html)
+            return Self.reply(ok: true)
+        } catch {
+            return failureReply(error)
+        }
+    }
+
+    private func failureReply(_ error: Error) -> String {
+        if case WriteFailure.automationDenied = error {
+            return Self.reply(error: "\(productName) is not allowed to control Notes. Allow it under Automation in System Settings.")
+        }
+        return Self.reply(error: "Notes could not write the note: \(error)")
     }
 
     /// nil when the write may go ahead, else the reason it may not.
