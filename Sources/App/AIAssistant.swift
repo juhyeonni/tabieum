@@ -316,16 +316,15 @@ final class AIPanel: NSPanel, NSTextFieldDelegate {
         dismissing = false
     }
 
-    /// `caret` is in AppKit coordinates; the panel opens below it, or above it near the screen's bottom.
+    /// `caret` is in AppKit coordinates; see `popupFrame`.
     /// A nil `phase` shows the panel again as it is.
     func show(_ phase: Phase?, at caret: CGRect) {
         if let phase { render(phase) }
-        var origin = NSPoint(x: caret.minX, y: caret.minY - frame.height)
         if let visible = (NSScreen.screens.first { $0.frame.intersects(caret) } ?? NSScreen.main)?.visibleFrame {
-            if origin.y < visible.minY { origin.y = caret.maxY }
-            origin.x = max(visible.minX, min(origin.x, visible.maxX - frame.width))
+            setFrameOrigin(popupFrame(anchor: caret, size: frame.size, visible: visible).origin)
+        } else {
+            setFrameOrigin(NSPoint(x: caret.minX, y: caret.minY - frame.height))
         }
-        setFrameOrigin(origin)
         makeKeyAndOrderFront(nil)
         focus()
     }

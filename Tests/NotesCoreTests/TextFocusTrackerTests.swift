@@ -264,3 +264,31 @@ final class FakeSource: TextFocusSource {
     #expect(source.boundsQueries.count == 1)
     #expect(rects.last == CGRect(x: 1, y: 2, width: 3, height: 4))
 }
+
+private let screen = CGRect(x: 0, y: 0, width: 1000, height: 800)
+private let popup = CGSize(width: 360, height: 240)
+
+@Test func popupSitsBelowAMidScreenAnchorAndAboveABottomOne() {
+    #expect(popupFrame(anchor: CGRect(x: 100, y: 400, width: 10, height: 20), size: popup, visible: screen).origin == CGPoint(x: 100, y: 160))
+    #expect(popupFrame(anchor: CGRect(x: 100, y: 50, width: 10, height: 20), size: popup, visible: screen).origin == CGPoint(x: 100, y: 70))
+}
+
+@Test func popupStaysInsideForAScreenHighAnchor() {
+    let frame = popupFrame(anchor: CGRect(x: 100, y: 0, width: 10, height: 800), size: popup, visible: screen)
+    #expect(screen.contains(frame))
+}
+
+@Test func popupStaysInsideHorizontally() {
+    #expect(popupFrame(anchor: CGRect(x: -5, y: 400, width: 10, height: 20), size: popup, visible: screen).minX == 0)
+    #expect(popupFrame(anchor: CGRect(x: 990, y: 400, width: 10, height: 20), size: popup, visible: screen).maxX == 1000)
+}
+
+@Test @MainActor func selectionAnchorsAtItsLastCharacter() {
+    let source = FakeSource()
+    source.content = "hello"
+    source.selection = NSRange(location: 0, length: 5)
+    let last = CGRect(x: 40, y: 10, width: 8, height: 18)
+    source.boundsByRange[NSRange(location: 4, length: 1)] = last
+    source.boundsByRange[NSRange(location: 0, length: 5)] = CGRect(x: 0, y: 0, width: 48, height: 18)
+    #expect(TextFocusTracker(source: source).caretRect() == last)
+}
