@@ -11,6 +11,7 @@ final class AXTextFocusSource: TextFocusSource {
     private var lastRegistrationFailed = false
     private var retryTimer: Timer?
     private var workspaceTokens: [NSObjectProtocol] = []
+    private var notesApp: NSRunningApplication?
 
     var isTrusted: Bool { AXIsProcessTrusted() }
 
@@ -101,10 +102,14 @@ final class AXTextFocusSource: TextFocusSource {
                 let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
                 let terminatedNotes = name == NSWorkspace.didTerminateApplicationNotification
                     && app?.bundleIdentifier == TextFocusTracker.notesBundleID
-                MainActor.assumeIsolated { self?.workspaceChanged(notesTerminated: terminatedNotes) }
+                let lifecycle = name != NSWorkspace.didActivateApplicationNotification
+                MainActor.assumeIsolated {
+                    if lifecycle { self?.notesApp = nil }
+                    self?.workspaceChanged(notesTerminated: terminatedNotes)
+                }
             }
         }
-        attachIfNeeded()
+        attachIfNeeded(runningPID: notesPID())
     }
 
     func stopObserving() {
@@ -115,12 +120,12 @@ final class AXTextFocusSource: TextFocusSource {
     }
 
     private func workspaceChanged(notesTerminated: Bool) {
-        if notesTerminated { dropObserver() } else { attachIfNeeded() }
+        if notesTerminated { dropObserver() } else { attachIfNeeded(runningPID: notesPID()) }
         onChange?()
     }
 
-    private func attachIfNeeded() {
-        guard shouldAttachObserver(attachedPID: attachedPID, runningPID: notesPID(), lastRegistrationFailed: lastRegistrationFailed) else { return }
+    private func attachIfNeeded(runningPID: pid_t?) {
+        guard shouldAttachObserver(attachedPID: attachedPID, runningPID: runningPID, lastRegistrationFailed: lastRegistrationFailed) else { return }
         attach()
     }
 
@@ -189,7 +194,9 @@ final class AXTextFocusSource: TextFocusSource {
     }
 
     private func notesPID() -> pid_t? {
-        NSRunningApplication.runningApplications(withBundleIdentifier: TextFocusTracker.notesBundleID).first?.processIdentifier
+        if let notesApp, !notesApp.isTerminated { return notesApp.processIdentifier }
+        notesApp = NSRunningApplication.runningApplications(withBundleIdentifier: TextFocusTracker.notesBundleID).first
+        return notesApp?.processIdentifier
     }
 
     /// The default timeout is about 6 s, and the event tap shares the main thread with these calls.
@@ -197,7 +204,7 @@ final class AXTextFocusSource: TextFocusSource {
 
     private func focusedElement() -> AXUIElement? {
         guard isTrusted, let pid = notesPID() else { return nil }
-        if onChange != nil, retryTimer == nil { attachIfNeeded() }
+        if onChange != nil, retryTimer == nil { attachIfNeeded(runningPID: pid) }
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, Self.messagingTimeout)
         guard let element: CFTypeRef = value(app, kAXFocusedUIElementAttribute),
