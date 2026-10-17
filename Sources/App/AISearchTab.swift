@@ -103,6 +103,7 @@ struct AISearchTab: View {
                     NSPasteboard.general.setString(snippet, forType: .string)
                 }
             }
+            WriteSettingsCard(toggles: toggles)
             Card {
                 Text("What works with the current switches").bold()
                 ForEach(model.rows, id: \.feature) { row in
