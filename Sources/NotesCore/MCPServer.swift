@@ -77,7 +77,7 @@ public struct MCPServer: Sendable {
         serverName: String, version: String, indexURL: URL,
         isEnabled: @escaping @Sendable () -> Bool,
         ragEnabled: @escaping @Sendable () -> Bool = { false },
-        makeEmbedder: @escaping @Sendable () -> Embedder = { AppleEmbedder() },
+        makeEmbedder: @escaping @Sendable () -> Embedder = { ConfiguredEmbedder() },
         writeSettings: @escaping @Sendable () -> WriteSettings = { WriteSettings() },
         writeChannel: WriteChannel? = nil
     ) {
