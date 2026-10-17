@@ -123,8 +123,18 @@ public enum EmbeddingModel: String, CaseIterable, Sendable {
 
     public static let defaultsKey = "embeddingModel"
 
-    public init(defaults: UserDefaults = .standard) {
-        self = defaults.string(forKey: Self.defaultsKey).flatMap(Self.init(rawValue:)) ?? .apple
+    /// tabieum-e5-small-coreml is converted for the Neural Engine of an Apple silicon Mac, so an Intel Mac uses the built-in model.
+    public static var e5Available: Bool {
+        #if arch(arm64)
+        true
+        #else
+        false
+        #endif
+    }
+
+    public init(defaults: UserDefaults = .standard, e5Available: Bool = Self.e5Available) {
+        let stored = defaults.string(forKey: Self.defaultsKey).flatMap(Self.init(rawValue:)) ?? .apple
+        self = stored == .e5Small && !e5Available ? .apple : stored
     }
 }
 
@@ -134,14 +144,19 @@ public final class ConfiguredEmbedder: Embedder, @unchecked Sendable {
     private let defaults: UserDefaults
     private let apple: Embedder
     private let e5: Embedder
+    private let e5Available: Bool
 
-    public init(defaults: UserDefaults = .standard, apple: Embedder = AppleEmbedder(), e5: Embedder = E5Embedder.standard()) {
+    public init(
+        defaults: UserDefaults = .standard, apple: Embedder = AppleEmbedder(), e5: Embedder = E5Embedder.standard(),
+        e5Available: Bool = EmbeddingModel.e5Available
+    ) {
         self.defaults = defaults
         self.apple = apple
         self.e5 = e5
+        self.e5Available = e5Available
     }
 
-    private var current: Embedder { EmbeddingModel(defaults: defaults) == .e5Small ? e5 : apple }
+    private var current: Embedder { EmbeddingModel(defaults: defaults, e5Available: e5Available) == .e5Small ? e5 : apple }
 
     public var fingerprint: String { current.fingerprint }
     public func modelID(for text: String) -> String? { current.modelID(for: text) }

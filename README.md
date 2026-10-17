@@ -16,7 +16,7 @@ The app lives in the menu bar and has no Dock icon. [docs/features.md](docs/feat
 
 ## Install
 
-You need macOS 15 or later.
+You need macOS 15 or later, on an Apple silicon or an Intel Mac.
 
 **Homebrew**
 
@@ -76,6 +76,8 @@ Searching by meaning has two models. The built-in one comes with macOS. The othe
 - **Size and source:** about 234 MB (a 217 MB model and a 17 MB tokenizer), from `huggingface.co/juhyeonni/tabieum-e5-small-coreml`. The files are pinned to one commit and checked against a SHA-256 before they are used.
 - **No note text is sent.** Only the model is downloaded.
 - **Remove it:** delete `~/Library/Application Support/dev.juhyeonni.tabieum/models/`. Choose the built-in model first if you want to keep semantic search working. The app downloads the model again if you choose it later.
+
+The tabieum-e5-small-coreml model is made for the Neural Engine of Apple silicon. On an Intel Mac the option is hidden and the built-in model is used.
 
 The first search by meaning after a pause takes a couple of seconds while the model loads; the search panel shows the word matches first.
 

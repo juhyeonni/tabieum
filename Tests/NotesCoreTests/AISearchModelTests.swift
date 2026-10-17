@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import NotesCore
 
@@ -36,6 +37,15 @@ private func model(ai: Bool = false, rag: Bool = false, mcp: Bool = false, progr
     #expect(model(rag: true, progress: EmbeddingProgress(done: 0, total: 5, waitingForModel: true)).ragStatus == "Waiting for the model")
     #expect(model(rag: true, progress: EmbeddingProgress(done: 3, total: 8, waitingForModel: false)).ragStatus == "Embedding 3 / 8")
     #expect(model(rag: true).ragStatus == "Ready")
+}
+
+@Test func anIntelMacFallsBackToTheBuiltInModel() {
+    let name = "test.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: name)!
+    defer { defaults.removePersistentDomain(forName: name) }
+    defaults.set(EmbeddingModel.e5Small.rawValue, forKey: EmbeddingModel.defaultsKey)
+    #expect(EmbeddingModel(defaults: defaults, e5Available: true) == .e5Small)
+    #expect(EmbeddingModel(defaults: defaults, e5Available: false) == .apple)
 }
 
 @Test func mcpSnippetHasPathAndArgument() {
