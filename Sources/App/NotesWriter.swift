@@ -42,7 +42,7 @@ struct AppleScriptNotesWriter: NoteWriter {
         let body = "<div><h1>\(heading)</h1></div>" + html
         let handle = try await Self.run("""
         tell application "Notes"
-            set created to make new note at \(Self.folder(target)) with properties {name:\(Self.quoted(title)), body:\(Self.quoted(body))}
+            set created to make new note at \(Self.folder(target)) with properties {body:\(Self.quoted(body))}
             return id of created
         end tell
         """).text
