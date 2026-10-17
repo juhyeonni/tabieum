@@ -45,7 +45,7 @@ public struct AISearchModel: Equatable, Sendable {
     }
 
     public static func mcpSnippet(executablePath: String) -> String {
-        let config: [String: Any] = ["mcpServers": ["notes": ["command": executablePath, "args": ["--mcp"]]]]
+        let config: [String: Any] = ["mcpServers": ["tabieum": ["command": executablePath, "args": ["--mcp"]]]]
         let data = try? JSONSerialization.data(withJSONObject: config, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
         return data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
     }

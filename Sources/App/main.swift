@@ -18,9 +18,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var indexService: IndexService?
     private let embeddingItem = NSMenuItem()
     private let embedding = EmbeddingState()
+    private let modelInstall = ModelInstall()
     private var backlinksPanel: BacklinksPanel?
     private var searchPanel: SearchPanel?
     private var writeServer: WriteSocketServer?
+    private let panelEmbedder = ConfiguredEmbedder(e5: E5Embedder(store: E5Embedder.standardStore(), idleSeconds: 300))
     private lazy var searchShortcut = ShortcutController(
         toggles: toggles, title: "Search shortcut", id: 1, keyPath: \.searchShortcut) { [weak self] in self?.searchPanel?.show() }
     private lazy var copyMarkdownShortcut = ShortcutController(
@@ -61,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         embeddingItem.isHidden = true
         menu.addItem(embeddingItem)
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Quit \(name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
         statusItem = item
@@ -90,7 +93,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 onProgress: { progress in Task { @MainActor in self.showEmbedding(progress) } })
             service.start()
             indexService = service
-            searchPanel = SearchPanel(indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier))
+            if toggles.embeddingModel == .e5Small { installModel() }
+            searchPanel = SearchPanel(indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier)) { [weak self] in
+                guard let self, toggles.ragEnabled, toggles.semanticPanelSearch else { return nil }
+                return panelEmbedder
+            }
             backlinksPanel = BacklinksPanel(indexURL: indexURL)
             startWriteServer(bundleIdentifier: bundleIdentifier)
         }
@@ -122,8 +129,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func showSettings() {
         let created = settingsWindow == nil
         let window = settingsWindow ?? makeWindow(title: "Settings", view: SettingsView(
-            status: status, toggles: toggles, ai: ai, embedding: embedding, shortcuts: [searchShortcut, copyMarkdownShortcut, copyLinkShortcut],
-            showOnboarding: { [weak self] in self?.showOnboarding() }, setRAG: { [weak self] in self?.setRAG($0) }))
+            status: status, toggles: toggles, ai: ai, embedding: embedding, install: modelInstall,
+            shortcuts: [searchShortcut, copyMarkdownShortcut, copyLinkShortcut],
+            showOnboarding: { [weak self] in self?.showOnboarding() }, setRAG: { [weak self] in self?.setRAG($0) },
+            chooseModel: { [weak self] in self?.chooseModel($0) }, retryInstall: { [weak self] in self?.installModel() }))
         window.styleMask.insert(.resizable)
         if created {
             window.setContentSize(NSSize(width: 800, height: 700))
@@ -149,6 +158,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             indexService?.requestSync()
             return
         }
+        if toggles.embeddingModel == .e5Small {
+            toggles.ragEnabled = true
+            installModel()
+            indexService?.requestSync()
+            return
+        }
         let alert = NSAlert()
         alert.messageText = "Download Apple's embedding model?"
         alert.informativeText = "RAG search needs Apple's on-device embedding model. macOS downloads it once. Your notes never leave this Mac."
@@ -161,6 +176,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             await AppleEmbedder.requestAssets()
             indexService?.requestSync()
         }
+    }
+
+    private func chooseModel(_ model: EmbeddingModel) {
+        guard model == .e5Small else {
+            toggles.embeddingModel = .apple
+            indexService?.requestSync()
+            Task {
+                await AppleEmbedder.requestAssets()
+                indexService?.requestSync()
+            }
+            return
+        }
+        guard E5Embedder.standardStore().isInstalled(.e5Small) || confirmModelDownload() else { return }
+        toggles.embeddingModel = .e5Small
+        installModel()
+        indexService?.requestSync()
+    }
+
+    private func confirmModelDownload() -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Download the tabieum-e5-small-coreml model?"
+        alert.informativeText = "A Core ML conversion of multilingual-e5-small. It is "
+            + "\(ByteCountFormatter.string(fromByteCount: ModelSource.e5Small.downloadSize, countStyle: .file)) "
+            + "and downloaded once from huggingface.co. Only the model is downloaded; your notes never leave this Mac."
+        alert.addButton(withTitle: "Download")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    private func installModel() {
+        modelInstall.startIfNeeded { [weak self] in self?.indexService?.requestSync() }
     }
 
     private func showOnboarding() {
@@ -192,6 +238,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         status.setPolling(anyVisible)
     }
 
+    @objc private func checkForUpdates() {
+        Task { await UpdateAction.run() }
+    }
+
     @objc private func toggleVimLatency(_ sender: NSMenuItem) {
         guard let vim else { return }
         vim.showsLatency.toggle()
@@ -207,8 +257,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 if CommandLine.arguments.contains("--mcp") {
     let info = ProductInfo.main
     MCPServer(
-        serverName: info?.name ?? "NoteKit", version: "0.1.0",
-        indexURL: SearchIndex.defaultURL(bundleIdentifier: info?.bundleIdentifier ?? "dev.juhyeonni.notekit"),
+        serverName: info?.name ?? "tabieum",
+        version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0",
+        indexURL: SearchIndex.defaultURL(bundleIdentifier: info?.bundleIdentifier ?? "dev.juhyeonni.tabieum"),
         isEnabled: { UserDefaults.standard.bool(forKey: "mcpEnabled") },
         ragEnabled: { UserDefaults.standard.bool(forKey: "ragEnabled") },
         writeSettings: { WriteSettings(defaults: .standard) },

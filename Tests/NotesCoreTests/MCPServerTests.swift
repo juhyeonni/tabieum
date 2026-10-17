@@ -29,7 +29,7 @@ private func fixtureIndex(vectors: Bool = false) throws -> URL {
 }
 
 private func server(_ url: URL, enabled: Bool = true, rag: Bool = false) -> MCPServer {
-    MCPServer(serverName: "NoteKit", version: "0", indexURL: url, isEnabled: { enabled }, ragEnabled: { rag },
+    MCPServer(serverName: "tabieum", version: "0", indexURL: url, isEnabled: { enabled }, ragEnabled: { rag },
               makeEmbedder: { CarEmbedder() })
 }
 
@@ -61,7 +61,7 @@ private func errorCode(_ message: [String: Any]) -> Int? {
             let result = try #require(message["result"] as? [String: Any])
             #expect(result["protocolVersion"] as? String == got)
             #expect((result["capabilities"] as? [String: Any])?["tools"] != nil)
-            #expect((result["serverInfo"] as? [String: Any])?["name"] as? String == "NoteKit")
+            #expect((result["serverInfo"] as? [String: Any])?["name"] as? String == "tabieum")
         }
     }
 
