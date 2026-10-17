@@ -60,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         embeddingItem.isHidden = true
         menu.addItem(embeddingItem)
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Quit \(name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
         statusItem = item
@@ -171,6 +172,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let closing = notification.object as? NSWindow
         let anyVisible = [onboardingWindow, settingsWindow].contains { $0 != nil && $0 !== closing && $0!.isVisible }
         status.setPolling(anyVisible)
+    }
+
+    @objc private func checkForUpdates() {
+        Task { await UpdateAction.run() }
     }
 
     @objc private func toggleVimLatency(_ sender: NSMenuItem) {

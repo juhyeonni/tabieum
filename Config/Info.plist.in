@@ -38,6 +38,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>ReleasesRepository</key>
+	<string>__REPO__</string>
 	<key>LSUIElement</key>
 	<true/>
 </dict>

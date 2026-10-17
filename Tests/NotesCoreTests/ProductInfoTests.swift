@@ -24,3 +24,9 @@ import Testing
     #expect(ProductInfo(infoDictionary: ["CFBundleName": "tabieum"]) == nil)
     #expect(ProductInfo(infoDictionary: ["CFBundleIdentifier": "dev.example.tabieum"]) == nil)
 }
+
+@Test func productInfoReadsTheReleasesRepository() {
+    let base: [String: Any] = ["CFBundleName": "tabieum", "CFBundleIdentifier": "dev.example.tabieum"]
+    #expect(ProductInfo(infoDictionary: base)?.repository == nil)
+    #expect(ProductInfo(infoDictionary: base.merging(["ReleasesRepository": "me/app"]) { $1 })?.repository == "me/app")
+}
