@@ -112,6 +112,7 @@ final class VimController {
         unsupported = false
         swallowed = []
         queue = []
+        engine.searchStatus = nil
         indicator.hide()
         log.notice("Vim off: event tap removed")
     }
@@ -270,7 +271,7 @@ final class VimController {
         active = buffer != nil && mismatchLine == nil
         unsupported = buffer != nil && !active
         editorFrame = state.editorFrame
-        indicator.show(engine.mode, in: state.editorFrame, detail: latencyText)
+        indicator.show(engine.mode, in: state.editorFrame, detail: [engine.searchStatus, latencyText].compactMap { $0 }.joined(separator: " "))
     }
 
     // MARK: - search

@@ -194,6 +194,7 @@ public struct VimEngine: Sendable {
     private var playDepth = 0
 
     public var isRecording: Bool { recording != nil }
+    public var searchStatus: String?
 
     public init(mode: VimMode = .normal, jkEnabled: Bool = false) {
         self.mode = mode
@@ -381,6 +382,7 @@ public struct VimEngine: Sendable {
         case "u": reset(); return .undo
         case "/", "?":
             reset()
+            searchStatus = nil
             return .promptSearch(forward: c == "/")
         case "n", "N": reset(); return .searchNext(reverse: c == "N")
         case "*", "#": reset(); return .searchWord(forward: c == "*")
@@ -701,11 +703,12 @@ public struct VimEngine: Sendable {
         return last.isEmpty ? [.select(t.range(lo, lo))] : edits + last
     }
 
-    private func find(
+    private mutating func find(
         _ pattern: String, _ forward: Bool, from cur: Int, _ buffer: VimBuffer, _ t: VimText
     ) -> [VimAction] {
-        guard let range = vimSearch(in: buffer.text, pattern: pattern, from: t.offsets[cur], forward: forward)
-        else { return [] }
+        let range = vimSearch(in: buffer.text, pattern: pattern, from: t.offsets[cur], forward: forward)
+        searchStatus = vimSearchStatus(in: buffer.text, pattern: pattern, forward: forward, current: range)
+        guard let range else { return [] }
         return [.select(range)]
     }
 
@@ -1219,6 +1222,31 @@ public func vimSearch(in text: String, pattern: String, from offset: Int, forwar
     let end = min(max(offset - 1 + pattern.utf16.count, 0), ns.length)
     return find(options.union(.backwards), in: NSRange(location: 0, length: end))
         ?? find(options.union(.backwards), in: all)
+}
+
+/// `/good  2/5`: the prefix, the pattern, and the number of the current match out of all matches.
+public func vimSearchStatus(in text: String, pattern: String, forward: Bool, current: NSRange?) -> String {
+    let head = (forward ? "/" : "?") + pattern + "  "
+    let matches = vimMatches(in: text, pattern: pattern)
+    guard let current, let index = matches.firstIndex(where: { $0.location == current.location }) else {
+        return head + "no match"
+    }
+    return head + "\(index + 1)/\(matches.count)"
+}
+
+func vimMatches(in text: String, pattern: String) -> [NSRange] {
+    guard !pattern.isEmpty else { return [] }
+    let ns = text as NSString
+    let options: NSString.CompareOptions = pattern.contains(where: \.isUppercase) ? [] : [.caseInsensitive]
+    var matches: [NSRange] = []
+    var from = 0
+    while from < ns.length {
+        let found = ns.range(of: pattern, options: options, range: NSRange(location: from, length: ns.length - from))
+        guard found.location != NSNotFound else { break }
+        matches.append(found)
+        from = found.location + max(found.length, 1)
+    }
+    return matches
 }
 
 private extension Character {
