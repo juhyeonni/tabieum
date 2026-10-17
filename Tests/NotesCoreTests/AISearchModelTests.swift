@@ -42,4 +42,5 @@ private func model(ai: Bool = false, rag: Bool = false, mcp: Bool = false, progr
     let snippet = AISearchModel.mcpSnippet(executablePath: "/Applications/tabieum.app/Contents/MacOS/tabieum")
     #expect(snippet.contains("\"/Applications/tabieum.app/Contents/MacOS/tabieum\""))
     #expect(snippet.contains("\"--mcp\""))
+    #expect(snippet.contains("\"tabieum\""))
 }

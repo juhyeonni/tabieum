@@ -73,9 +73,9 @@ The app's own executable is a read-only MCP server over stdio when started with 
 
 - Claude Desktop, in `claude_desktop_config.json`:
   ```json
-  { "mcpServers": { "notes": { "command": "/Applications/tabieum.app/Contents/MacOS/tabieum", "args": ["--mcp"] } } }
+  { "mcpServers": { "tabieum": { "command": "/Applications/tabieum.app/Contents/MacOS/tabieum", "args": ["--mcp"] } } }
   ```
-- Claude Code: `claude mcp add notes -- /Applications/tabieum.app/Contents/MacOS/tabieum --mcp`
+- Claude Code: `claude mcp add tabieum -- /Applications/tabieum.app/Contents/MacOS/tabieum --mcp`
 
 ## Build from source
 
