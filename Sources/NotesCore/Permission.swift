@@ -41,8 +41,8 @@ public enum PermissionState: Equatable, Sendable {
     }
 }
 
-public func permissionPollInterval(allGranted: Bool) -> TimeInterval {
-    allGranted ? 5 : 1
+public func permissionPollInterval(states: [PermissionState]) -> TimeInterval {
+    states.allSatisfy { $0 == .granted || $0 == .notesNotRunning } ? 5 : 1
 }
 
 public enum NotesDatabase {

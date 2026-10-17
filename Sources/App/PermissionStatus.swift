@@ -45,7 +45,7 @@ final class PermissionStatus: ObservableObject {
     }
 
     private func schedule() {
-        let interval = polling ? permissionPollInterval(allGranted: allGranted) : 0
+        let interval = polling ? permissionPollInterval(states: Array(states.values)) : 0
         guard interval != timerInterval else { return }
         timer?.invalidate()
         timer = nil

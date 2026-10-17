@@ -65,6 +65,8 @@ private func freshSuite() -> UserDefaults {
 }
 
 @Test func permissionPollInterval() {
-    #expect(permissionPollInterval(allGranted: false) == 1)
-    #expect(permissionPollInterval(allGranted: true) == 5)
+    #expect(permissionPollInterval(states: [.granted, .notGranted]) == 1)
+    #expect(permissionPollInterval(states: [.granted, .unknown]) == 1)
+    #expect(permissionPollInterval(states: [.granted, .granted]) == 5)
+    #expect(permissionPollInterval(states: [.granted, .notesNotRunning]) == 5)
 }
