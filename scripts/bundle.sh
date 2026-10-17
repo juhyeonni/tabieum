@@ -14,8 +14,9 @@ cp "$bin_dir/App" "$app/Contents/MacOS/$PRODUCT_NAME"
 sed -e "s/__PRODUCT_NAME__/$PRODUCT_NAME/g" \
     -e "s/__BUNDLE_ID__/$BUNDLE_ID/g" \
     -e "s/__URL_SCHEME__/$URL_SCHEME/g" \
+    -e "s/__VERSION__/$VERSION/g" \
     Config/Info.plist.in > "$app/Contents/Info.plist"
 plutil -lint "$app/Contents/Info.plist" > /dev/null
 # A stable identity keeps Keychain "Always Allow" valid across rebuilds; the ad-hoc default changes with every build.
-codesign --force --sign "${NOTEKIT_SIGN_IDENTITY:--}" "$app"
+codesign --force --sign "${TABIEUM_SIGN_IDENTITY:--}" "$app"
 echo "$app"

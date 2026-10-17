@@ -188,8 +188,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 if CommandLine.arguments.contains("--mcp") {
     let info = ProductInfo.main
     MCPServer(
-        serverName: info?.name ?? "NoteKit", version: "0.1.0",
-        indexURL: SearchIndex.defaultURL(bundleIdentifier: info?.bundleIdentifier ?? "dev.juhyeonni.notekit"),
+        serverName: info?.name ?? "tabieum",
+        version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0",
+        indexURL: SearchIndex.defaultURL(bundleIdentifier: info?.bundleIdentifier ?? "dev.juhyeonni.tabieum"),
         isEnabled: { UserDefaults.standard.bool(forKey: "mcpEnabled") },
         ragEnabled: { UserDefaults.standard.bool(forKey: "ragEnabled") }
     ).runStdio()

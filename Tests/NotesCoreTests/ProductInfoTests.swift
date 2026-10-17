@@ -3,24 +3,24 @@ import Testing
 
 @Test func readsNameBundleIdentifierAndURLScheme() {
     let info = ProductInfo(infoDictionary: [
-        "CFBundleName": "NoteKit",
-        "CFBundleIdentifier": "dev.example.notekit",
-        "CFBundleURLTypes": [["CFBundleURLSchemes": ["notekit"]]],
+        "CFBundleName": "tabieum",
+        "CFBundleIdentifier": "dev.example.tabieum",
+        "CFBundleURLTypes": [["CFBundleURLSchemes": ["tabieum"]]],
     ])
-    #expect(info?.name == "NoteKit")
-    #expect(info?.bundleIdentifier == "dev.example.notekit")
-    #expect(info?.urlScheme == "notekit")
+    #expect(info?.name == "tabieum")
+    #expect(info?.bundleIdentifier == "dev.example.tabieum")
+    #expect(info?.urlScheme == "tabieum")
 }
 
 @Test func urlSchemeIsOptional() {
     let info = ProductInfo(infoDictionary: [
-        "CFBundleName": "NoteKit",
-        "CFBundleIdentifier": "dev.example.notekit",
+        "CFBundleName": "tabieum",
+        "CFBundleIdentifier": "dev.example.tabieum",
     ])
     #expect(info?.urlScheme == nil)
 }
 
 @Test func missingNameOrIdentifierYieldsNil() {
-    #expect(ProductInfo(infoDictionary: ["CFBundleName": "NoteKit"]) == nil)
-    #expect(ProductInfo(infoDictionary: ["CFBundleIdentifier": "dev.example.notekit"]) == nil)
+    #expect(ProductInfo(infoDictionary: ["CFBundleName": "tabieum"]) == nil)
+    #expect(ProductInfo(infoDictionary: ["CFBundleIdentifier": "dev.example.tabieum"]) == nil)
 }
