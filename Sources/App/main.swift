@@ -21,7 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let modelInstall = ModelInstall()
     private var backlinksPanel: BacklinksPanel?
     private var searchPanel: SearchPanel?
-    private let panelEmbedder = ConfiguredEmbedder()
+    private let panelEmbedder = ConfiguredEmbedder(e5: E5Embedder(store: E5Embedder.standardStore(), idleSeconds: 300))
     private lazy var searchShortcut = ShortcutController(
         toggles: toggles, title: "Search shortcut", id: 1, keyPath: \.searchShortcut) { [weak self] in self?.searchPanel?.show() }
     private lazy var copyMarkdownShortcut = ShortcutController(

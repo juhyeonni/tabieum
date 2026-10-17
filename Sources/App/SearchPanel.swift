@@ -6,6 +6,8 @@ import SwiftUI
 final class SearchModel: ObservableObject {
     @Published var query = "" { didSet { run() } }
     @Published private(set) var hits: [PanelHit] = []
+    /// True while the search by meaning is still running behind the word-search hits already listed.
+    @Published private(set) var refining = false
     @Published var selection = 0
     private let indexURL: URL
     private let embedder: @MainActor () -> Embedder?
@@ -26,18 +28,27 @@ final class SearchModel: ObservableObject {
         let current = generation, text = query, url = indexURL, embedder = embedder()
         guard !text.allSatisfy(\.isWhitespace) else {
             hits = []
+            refining = false
             return
         }
+        refining = embedder != nil
         Task.detached {
-            if embedder != nil {
-                try? await Task.sleep(for: .milliseconds(150))
-                guard await MainActor.run(body: { current == self.generation }) else { return }
-            }
-            let found = (try? SearchIndex(url: url, readOnly: true).panelSearch(text, embedder: embedder, limit: 50)) ?? []
+            // Word search answers at once; the search by meaning can wait for the model to load.
+            let quick = (try? SearchIndex(url: url, readOnly: true).panelSearch(text, embedder: nil, limit: 50)) ?? []
             await MainActor.run {
                 guard current == self.generation else { return }
-                self.hits = found
+                self.hits = quick
                 self.selection = 0
+            }
+            guard let embedder else { return }
+            try? await Task.sleep(for: .milliseconds(150))
+            guard await MainActor.run(body: { current == self.generation }) else { return }
+            let full = (try? SearchIndex(url: url, readOnly: true).panelSearch(text, embedder: embedder, limit: 50)) ?? []
+            await MainActor.run {
+                guard current == self.generation else { return }
+                self.hits = full
+                self.selection = min(self.selection, max(full.count - 1, 0))
+                self.refining = false
             }
         }
     }
@@ -74,6 +85,7 @@ final class SearchPanel {
     }
 
     func show() {
+        warmUp()
         let model = SearchModel(indexURL: indexURL, embedder: embedder)
         panel.contentView = NSHostingView(rootView: SearchView(model: model, open: { [weak self] in self?.open($0) },
                                                                close: { [weak self] in self?.close() }))
@@ -83,6 +95,12 @@ final class SearchPanel {
 
     private func close() {
         panel.orderOut(nil)
+    }
+
+    /// Loads the model while the panel opens, so the first search by meaning does not wait for it.
+    private func warmUp() {
+        guard let embedder = embedder(), let id = embedder.modelID(for: "warm"), embedder.isReady(id) else { return }
+        Task.detached { _ = try? embedder.embed("warm", modelID: id, kind: .query) }
     }
 
     private func open(_ hit: SearchResult) {
@@ -103,6 +121,9 @@ private struct SearchView: View {
                 .textFieldStyle(.plain)
                 .font(.title2)
                 .padding(12)
+                .overlay(alignment: .trailing) {
+                    if model.refining { ProgressView().controlSize(.small).padding(.trailing, 14) }
+                }
                 .focused($focused)
                 .onSubmit(openSelected)
                 .onKeyPress(.upArrow) { model.move(-1); return .handled }
@@ -114,13 +135,14 @@ private struct SearchView: View {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(model.hits.enumerated()), id: \.element.note.id) { index, hit in
                             row(hit, selected: index == model.selection)
-                                .id(index)
                                 .onTapGesture(count: 2) { open(hit.note) }
                                 .onTapGesture { model.selection = index }
                         }
                     }
                 }
-                .onChange(of: model.selection) { _, new in proxy.scrollTo(new) }
+                .onChange(of: model.selection) { _, new in
+                    if model.hits.indices.contains(new) { proxy.scrollTo(model.hits[new].note.id) }
+                }
             }
         }
         .frame(width: 640, height: 420)
