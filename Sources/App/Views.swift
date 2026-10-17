@@ -101,6 +101,10 @@ struct SettingsView: View {
                     Text("Vim-style modal editing inside Notes.").font(.callout).foregroundStyle(.secondary)
                     Toggle("Leave Insert mode with jk", isOn: $toggles.vimJKEnabled)
                         .disabled(!toggles.vimEnabled)
+                    Picker("Cursor shape", selection: $toggles.vimCursorShape) {
+                        ForEach(VimCursorSetting.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                    }
+                    .disabled(!toggles.vimEnabled)
                 }
                 Card {
                     Text("Markdown shortcuts").bold()

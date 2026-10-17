@@ -46,6 +46,8 @@ final class VimController {
     private let indicator = ModeIndicator()
     private let searchInput = SearchInput()
     private let shading = SearchShading()
+    private let cursorBlock = SearchShading(fill: .controlAccentColor, currentAlpha: 0.45)
+    private var cursorSetting = VimCursorSetting.modeBased
     private var scrollMonitor: Any?
     private var editorFrame: CGRect?
     private var engine = VimEngine()
@@ -76,6 +78,12 @@ final class VimController {
         self.tracker = tracker
         toggles.$vimJKEnabled.sink { [weak self] on in
             MainActor.assumeIsolated { self?.engine.jkEnabled = on }
+        }.store(in: &cancellables)
+        toggles.$vimCursorShape.sink { [weak self] setting in
+            MainActor.assumeIsolated {
+                self?.cursorSetting = setting
+                self?.refreshCursor()
+            }
         }.store(in: &cancellables)
         toggles.$vimEnabled.sink { [weak self] on in
             MainActor.assumeIsolated { on ? self?.install() : self?.remove() }
@@ -124,6 +132,7 @@ final class VimController {
         if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
         scrollMonitor = nil
         shading.hide()
+        cursorBlock.hide()
         indicator.hide()
         log.notice("Vim off: event tap removed")
     }
@@ -325,6 +334,34 @@ final class VimController {
                 detail: [engine.searchStatus, latencyText].compactMap { $0 }.joined(separator: " "))
         }
         showShading(buffer, frame: state.editorFrame)
+        showCursor(buffer, frame: state.editorFrame)
+    }
+
+    private func refreshCursor() {
+        guard tap != nil else { return }
+        showCursor(tracker.buffer(), frame: tracker.state(withCaretRect: false).editorFrame)
+    }
+
+    private func showCursor(_ buffer: VimBuffer?, frame: CGRect?) {
+        guard active, !searchOpen, let buffer, let frame,
+              vimCursorShape(mode: engine.mode, setting: cursorSetting) == .block,
+              let rect = cursorBlockRect(buffer)
+        else { return cursorBlock.hide() }
+        cursorBlock.show([(rect, true)], in: frame)
+    }
+
+    /// The character under the cursor; a selection's cursor is its last character. An empty line or the end of the note gets a block half as wide as the line is tall.
+    private func cursorBlockRect(_ buffer: VimBuffer) -> CGRect? {
+        let ns = buffer.text as NSString
+        let selection = buffer.selection
+        let at = selection.length > 0 ? NSMaxRange(selection) - 1 : selection.location
+        if at < ns.length {
+            let range = ns.rangeOfComposedCharacterSequence(at: at)
+            let isBreak = ns.substring(with: range).trimmingCharacters(in: .newlines).isEmpty
+            if !isBreak, let rect = tracker.bounds(for: range), rect.size != .zero { return rect }
+        }
+        guard let line = tracker.caretRect(), line.height > 0 else { return nil }
+        return CGRect(x: line.maxX, y: line.minY, width: line.height / 2, height: line.height)
     }
 
     private func refreshShading() {
@@ -372,17 +409,25 @@ final class VimController {
 @MainActor
 final class SearchShading {
     private final class ShadeView: NSView {
+        var fill = NSColor.systemYellow
+        var currentAlpha = 0.6
         var rects: [(rect: CGRect, isCurrent: Bool)] = []
         override var isFlipped: Bool { true }
         override func draw(_ dirtyRect: NSRect) {
             for (rect, isCurrent) in rects {
-                NSColor.systemYellow.withAlphaComponent(isCurrent ? 0.6 : 0.25).setFill()
+                fill.withAlphaComponent(isCurrent ? currentAlpha : 0.25).setFill()
                 rect.fill()
             }
         }
     }
 
     private let view = ShadeView()
+
+    init(fill: NSColor = .systemYellow, currentAlpha: Double = 0.6) {
+        view.fill = fill
+        view.currentAlpha = currentAlpha
+    }
+
     private lazy var window: NSWindow = {
         let window = NSWindow(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: true)
         window.isOpaque = false
