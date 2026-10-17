@@ -65,7 +65,8 @@ struct AITab: View {
     private var host: String? { AIConfig(baseURL: baseURL, chatModel: "-")?.host }
 
     var body: some View {
-        Form {
+        Card {
+            Toggle("AI assistant", isOn: $toggles.aiEnabled)
             Text("Uses an OpenAI-compatible server such as Ollama or LM Studio. While off, nothing is sent.")
                 .font(.callout).foregroundStyle(.secondary)
             HStack {
@@ -77,17 +78,19 @@ struct AITab: View {
                 Text("OpenAI-compatible").tag(AIFormat.openAI.rawValue)
                 Text("Anthropic").tag(AIFormat.anthropic.rawValue)
             }
-            TextField("Base URL", text: $baseURL, prompt: Text("http://localhost:11434/v1"))
+            field("Base URL") { TextField("", text: $baseURL, prompt: Text("http://localhost:11434/v1")) }
             if !baseURL.isEmpty && host == nil {
                 Text("Use https, or http to localhost.").font(.caption).foregroundStyle(.red)
             }
-            TextField("Chat model", text: $chatModel, prompt: Text("llama3.2"))
+            field("Chat model") { TextField("", text: $chatModel, prompt: Text("llama3.2")) }
             if format == AIFormat.openAI.rawValue {
-                TextField("Embedding model", text: $embeddingModel, prompt: Text("Optional"))
+                field("Embedding model") { TextField("", text: $embeddingModel, prompt: Text("Optional")) }
             }
-            SecureField("API key", text: $apiKey, prompt: Text("Optional"))
-            TextField("Extra headers", text: $extraHeaders, prompt: Text("Name: value, one per line"), axis: .vertical)
-                .lineLimit(2...6)
+            field("API key") { SecureField("", text: $apiKey, prompt: Text("Optional")) }
+            field("Extra headers") {
+                TextField("", text: $extraHeaders, prompt: Text("Name: value, one per line"), axis: .vertical)
+                    .lineLimit(2...6)
+            }
             Text("Use {session} for an ID that stays the same until the app quits. Put secrets in API key.")
                 .font(.caption).foregroundStyle(.secondary)
             ForEach(headerErrors, id: \.line) { error in
@@ -98,18 +101,16 @@ struct AITab: View {
                 Text(result).font(.callout).lineLimit(3)
             }
             if !hosts.isEmpty {
-                Section("Hosts allowed to receive note text") {
-                    ForEach(hosts, id: \.self) { allowed in
-                        HStack {
-                            Text(allowed)
-                            Spacer()
-                            Button("Revoke") { consent.revoke(allowed); hosts = consent.hosts }
-                        }
+                Text("Hosts allowed to receive note text").bold()
+                ForEach(hosts, id: \.self) { allowed in
+                    HStack {
+                        Text(allowed)
+                        Spacer()
+                        Button("Revoke") { consent.revoke(allowed); hosts = consent.hosts }
                     }
                 }
             }
         }
-        .padding()
         .onAppear {
             hosts = consent.hosts
             apiKey = host.flatMap { APIKeychain.key(service: AISettings.service, host: $0) } ?? ""
@@ -137,6 +138,10 @@ struct AITab: View {
         } message: {
             Text("Note text will be sent to \(consentHost ?? ""). You can revoke this here later.")
         }
+    }
+
+    private func field(_ title: String, @ViewBuilder _ content: () -> some View) -> some View {
+        LabeledContent(title, content: content)
     }
 
     private func record() {

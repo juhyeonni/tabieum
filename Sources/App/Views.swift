@@ -87,35 +87,39 @@ struct SettingsView: View {
 
     var body: some View {
         TabView {
-            ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 16) {
-                PermissionRows(status: status)
-                Button("Show Permissions Onboarding…", action: showOnboarding)
-                Divider()
-                ForEach(shortcuts, id: \.title) { ShortcutRecorder(controller: $0) }
-                Divider()
-                Text("Markdown shortcuts").bold()
-                ForEach(MarkdownStyle.allCases, id: \.self) { style in
-                    Toggle("\(style.marker.trimmingCharacters(in: .whitespacesAndNewlines))  \(style.displayName)",
-                           isOn: markdownBinding(style))
+            SettingsPage {
+                Card {
+                    PermissionRows(status: status)
+                    Button("Show Permissions Onboarding…", action: showOnboarding)
                 }
-                Divider()
-                TextField("Templates folder", text: $toggles.templateFolder)
-                Text("Type / in a note to insert one of this folder's notes, from any account.")
-                    .font(.callout).foregroundStyle(.secondary)
-            }
-            .padding()
-            .frame(maxWidth: .infinity, alignment: .leading)
+                Card { ForEach(shortcuts, id: \.title) { ShortcutRecorder(controller: $0) } }
             }
             .tabItem { Label("General", systemImage: "gearshape") }
-            featureTab($toggles.vimEnabled, title: "Enable Vim mode",
-                       detail: "Vim-style modal editing inside Notes.") {
-                Toggle("Leave Insert mode with jk", isOn: $toggles.vimJKEnabled)
-                    .disabled(!toggles.vimEnabled)
+            SettingsPage {
+                Card {
+                    Toggle("Enable Vim mode", isOn: $toggles.vimEnabled)
+                    Text("Vim-style modal editing inside Notes.").font(.callout).foregroundStyle(.secondary)
+                    Toggle("Leave Insert mode with jk", isOn: $toggles.vimJKEnabled)
+                        .disabled(!toggles.vimEnabled)
+                }
+                Card {
+                    Text("Markdown shortcuts").bold()
+                    ForEach(MarkdownStyle.allCases, id: \.self) { style in
+                        Toggle("\(style.marker.trimmingCharacters(in: .whitespacesAndNewlines))  \(style.displayName)",
+                               isOn: markdownBinding(style))
+                    }
+                }
+                Card {
+                    TextField("Templates folder", text: $toggles.templateFolder)
+                    Text("Type / in a note to insert one of this folder's notes, from any account.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
             }
-                .tabItem { Label("Vim", systemImage: "keyboard") }
-            AISearchTab(toggles: toggles, embedding: embedding, ai: ai, setRAG: setRAG)
-                .tabItem { Label("AI & Search", systemImage: "sparkles") }
+            .tabItem { Label("Editor", systemImage: "keyboard") }
+            SettingsPage { AITab(toggles: toggles, feature: ai) }
+                .tabItem { Label("AI Assistant", systemImage: "sparkles") }
+            AISearchTab(toggles: toggles, embedding: embedding, setRAG: setRAG)
+                .tabItem { Label("Search & Agents", systemImage: "magnifyingglass") }
         }
         .frame(minWidth: 760, minHeight: 320)
         .padding()
@@ -129,18 +133,27 @@ struct SettingsView: View {
             }
         )
     }
+}
 
-    private func featureTab(
-        _ isOn: Binding<Bool>, title: String, detail: String,
-        @ViewBuilder extra: () -> some View = { EmptyView() }
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Toggle(title, isOn: isOn)
-            Text(detail).font(.callout).foregroundStyle(.secondary)
-            extra()
-            Spacer()
+struct SettingsPage<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 12) { content }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct Card<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) { content }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
     }
 }
