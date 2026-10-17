@@ -20,4 +20,4 @@ The app lives in the menu bar and has no Dock icon.
 
 ## For agents
 
-- **MCP server:** `tabieum --mcp` serves your notes over MCP, read-only. See [AI agents (MCP)](../README.md#ai-agents-mcp).
+- **MCP server:** `tabieum --mcp` serves your notes over MCP. It is read-only by default; `create_note` appears only after you turn on writing for agents. See [AI agents (MCP)](../README.md#ai-agents-mcp).

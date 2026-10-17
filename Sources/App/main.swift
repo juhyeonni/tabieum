@@ -261,7 +261,9 @@ if CommandLine.arguments.contains("--mcp") {
         version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0",
         indexURL: SearchIndex.defaultURL(bundleIdentifier: info?.bundleIdentifier ?? "dev.juhyeonni.tabieum"),
         isEnabled: { UserDefaults.standard.bool(forKey: "mcpEnabled") },
-        ragEnabled: { UserDefaults.standard.bool(forKey: "ragEnabled") }
+        ragEnabled: { UserDefaults.standard.bool(forKey: "ragEnabled") },
+        writeSettings: { WriteSettings(defaults: .standard) },
+        writeChannel: WriteSocketClient(path: NoteWriteService.socketURL(bundleIdentifier: info?.bundleIdentifier ?? "dev.juhyeonni.notekit"))
     ).runStdio()
     exit(0)
 }

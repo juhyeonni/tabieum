@@ -44,7 +44,7 @@ tabieum asks for three permissions in System Settings > Privacy & Security. It s
 |---|---|---|
 | Accessibility | Reads the Notes window and cursor so keyboard features work inside Notes: Vim mode, Markdown shortcuts, the `/` menu and the button at the bottom of the editor. | Those features do not work. The search shortcut and MCP still do. |
 | Full Disk Access | Reads the Notes database, read-only, to build the search index and to find the note you copy or link. Nothing is ever written to it. tabieum cannot grant this for you; you switch it on in System Settings. | The index cannot sync, so search and MCP find only what is already indexed. Copy as Markdown and backlinks cannot find the note. |
-| Automation (Notes) | Asks Notes which note is open or selected, and reads the notes in your templates folder. | Backlinks, copy and the `/` template list cannot see the current note. |
+| Automation (Notes) | Asks Notes which note is open or selected, and reads the notes in your templates folder. If you turn on writing for agents, it also creates, edits or deletes notes through Notes. | Backlinks, copy and the `/` template list cannot see the current note. Agents cannot write notes. |
 
 If you update with the same signing certificate, the permissions stay. If the certificate ever changes, you will be asked again once. To take a permission back, switch it off in the same System Settings page, or run `tccutil reset All dev.juhyeonni.tabieum` to reset all of them.
 
@@ -85,7 +85,7 @@ AI helpers rewrite or summarize a note, answer questions about it, and answer "A
 
 ## AI agents (MCP)
 
-The app's own executable is a read-only MCP server over stdio when started with `--mcp`. It opens only the search index, never Notes, so the client needs no Full Disk Access. Tools: `search_notes`, `get_note` and `list_backlinks`.
+The app's own executable is an MCP server over stdio when started with `--mcp`. It is read-only by default: it opens only the search index, so the client needs no Full Disk Access. Tools: `search_notes`, `get_note` and `list_backlinks`. `create_note` appears only after you turn on writing for agents (see [Letting agents write to Notes](#letting-agents-write-to-notes)).
 
 1. Open tabieum once so it can build the search index. Until then every tool call says there is no index yet.
 2. Turn on **AI agents (MCP)** in Settings > Search & Agents. While it is off, every tool call returns an error saying so. Results are as fresh as the app's last sync.
@@ -96,11 +96,20 @@ The app's own executable is a read-only MCP server over stdio when started with 
      ```
      Quit Claude Desktop completely and open it again.
    - **Claude Code:** `claude mcp add tabieum -- /Applications/tabieum.app/Contents/MacOS/tabieum --mcp`. Check it with `claude mcp list`.
-4. Check that it works: the client lists three tools, `search_notes`, `get_note` and `list_backlinks`. Ask it to search your notes.
+4. Check that it works: the client lists `search_notes`, `get_note` and `list_backlinks`, and `create_note` if you turned on writing. Ask it to search your notes.
 
 If you moved the app out of Applications, use its real path. If Claude Desktop does not show the server, look at `~/Library/Logs/Claude/mcp-server-tabieum.log`.
 
-Note text that the tools return to an agent can contain instructions written by someone else. Treat it as untrusted input. The tools only read; they do not change your notes.
+Note text that the tools return to an agent can contain instructions written by someone else. Treat it as untrusted input. Reading never changes your notes, and writing is off until you turn it on.
+
+### Letting agents write to Notes
+
+Off by default. Agents can only do what you allow here.
+
+- **Turn it on:** Settings > Search & Agents > **Let AI agents write to Notes**, then choose a **target folder**. Agents cannot pick another folder or create one. Creating notes is allowed to begin with.
+- **`create_note`** takes a Markdown `body` and an optional `title`. Notes uses the first line of a note as its title, so start the body with a heading, or pass `title` to have one put in front.
+- **Your say:** the app asks you before each write and shows a preview. Under **Consent** you can change that to once per session, always, or never. An option marks notes as created by an AI agent.
+- **How it writes:** the running app writes through Notes (Automation permission), so tabieum must be open. Your client may also ask before it calls a tool; that is separate from tabieum's own question.
 
 ## Troubleshooting
 
@@ -112,6 +121,8 @@ Note text that the tools return to an agent can contain instructions written by 
 | An MCP tool says the option is turned off | Switch on **AI agents (MCP)** in Settings > Search & Agents. |
 | An MCP tool says there is no index | Open tabieum and let it sync your notes. |
 | The server does not show up in Claude Desktop | Check that the path is absolute and the file is valid JSON, quit Claude Desktop completely and open it again, then read the log named above. |
+| A write tool says tabieum is not running | The app does the writing. Open tabieum and try again. |
+| A write tool says writing is off or no target folder is chosen | Turn on **Let AI agents write to Notes** in Settings > Search & Agents and choose a target folder. |
 | The search shortcut does nothing | Another app may use the same keys. Choose a different shortcut in Settings > General. |
 | macOS asks again for the Keychain or the permissions | You are running a build that is signed ad hoc. See [docs/development.md](docs/development.md) to sign your own builds with one certificate. |
 

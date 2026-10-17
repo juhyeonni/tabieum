@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import NotesCore
 
-private final class FakeWriter: NoteWriter, @unchecked Sendable {
+final class FakeWriter: NoteWriter, @unchecked Sendable {
     private let lock = NSLock()
     private var created: [(title: String?, html: String, target: NoteTarget)] = []
     var folderExists = true
@@ -19,7 +19,7 @@ private final class FakeWriter: NoteWriter, @unchecked Sendable {
     }
 }
 
-private final class FakeConfirmer: WriteConfirmer, @unchecked Sendable {
+final class FakeConfirmer: WriteConfirmer, @unchecked Sendable {
     private let lock = NSLock()
     private var asked = 0
     var answer: Bool? = true
@@ -36,7 +36,7 @@ private final class FakeConfirmer: WriteConfirmer, @unchecked Sendable {
     }
 }
 
-private func settings(_ change: (inout WriteSettings) -> Void = { _ in }) -> WriteSettings {
+func settings(_ change: (inout WriteSettings) -> Void = { _ in }) -> WriteSettings {
     var value = WriteSettings()
     value.enabled = true
     value.targetAccount = "iCloud"
@@ -45,14 +45,14 @@ private func settings(_ change: (inout WriteSettings) -> Void = { _ in }) -> Wri
     return value
 }
 
-private func service(
+func service(
     _ value: WriteSettings, writer: FakeWriter = FakeWriter(), confirmer: FakeConfirmer = FakeConfirmer(),
     timeout: Duration = .seconds(60)
 ) -> NoteWriteService {
     NoteWriteService(settings: { value }, writer: writer, confirmer: confirmer, productName: "tabieum", timeout: timeout)
 }
 
-private let createLine = #"{"action":"create","title":"Plan","html":"<div>Ship it</div>"}"#
+let createLine = #"{"action":"create","title":"Plan","html":"<div>Ship it</div>"}"#
 
 private func parse(_ reply: String) throws -> (ok: Bool, error: String) {
     let object = try #require(JSONSerialization.jsonObject(with: Data(reply.utf8)) as? [String: Any])
@@ -189,7 +189,7 @@ private func freshSuite() -> UserDefaults {
 
 // MARK: socket
 
-private func shortSocketURL() -> URL {
+func shortSocketURL() -> URL {
     URL(fileURLWithPath: "/tmp/tb-\(UUID().uuidString.prefix(8))/write.sock")
 }
 
