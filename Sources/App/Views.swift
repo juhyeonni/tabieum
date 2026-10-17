@@ -114,7 +114,7 @@ struct SettingsView: View {
             AISearchTab(toggles: toggles, embedding: embedding, ai: ai, setRAG: setRAG)
                 .tabItem { Label("AI & Search", systemImage: "sparkles") }
         }
-        .frame(width: 760)
+        .frame(minWidth: 760, minHeight: 320)
         .padding()
     }
 

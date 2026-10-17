@@ -104,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let window = settingsWindow ?? makeWindow(title: "Settings", view: SettingsView(
             status: status, toggles: toggles, ai: ai, embedding: embedding, shortcuts: [searchShortcut, copyMarkdownShortcut, copyLinkShortcut],
             showOnboarding: { [weak self] in self?.showOnboarding() }, setRAG: { [weak self] in self?.setRAG($0) }))
+        window.styleMask.insert(.resizable)
         settingsWindow = window
         show(window)
     }
