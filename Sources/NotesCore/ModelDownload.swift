@@ -21,7 +21,7 @@ public struct ModelSource: Equatable, Sendable {
     public var downloadSize: Int64 { files.reduce(0) { $0 + $1.size } }
 
     public static let e5Small: ModelSource = {
-        let revision = "9f917008fbe9e595b324d92a5fc6736961be63a9"
+        let revision = "088fcdfabeb40a23f12364c1fc1989f30a974aba"
         func file(_ name: String, _ sha256: String, _ size: Int64) -> ModelFile {
             ModelFile(name: name, url: URL(string: "https://huggingface.co/juhyeonni/tabieum-e5-small-coreml/resolve/\(revision)/\(name)")!,
                       sha256: sha256, size: size)
