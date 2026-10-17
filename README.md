@@ -16,7 +16,7 @@ The app lives in the menu bar and has no Dock icon. [docs/features.md](docs/feat
 
 ## Install
 
-You need macOS 15 or later.
+You need macOS 15 or later. The download is built for Apple silicon only (the Homebrew cask refuses to install on an Intel Mac). On an Intel Mac you would have to build it yourself, which has not been tried.
 
 **Homebrew**
 
