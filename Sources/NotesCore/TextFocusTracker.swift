@@ -130,7 +130,10 @@ public final class TextFocusTracker {
 
     public func caretRect() -> CGRect? {
         guard isFocused, let range = source.selectedRange() else { return nil }
-        if range.length > 0 { return source.bounds(for: range) }
+        if range.length > 0 {
+            if let last = source.bounds(for: NSRange(location: NSMaxRange(range) - 1, length: 1)), last.size != .zero { return last }
+            return source.bounds(for: range)
+        }
         return neighbourBounds(of: range.location)
     }
 
@@ -174,4 +177,13 @@ public final class TextFocusTracker {
             for subscriber in subscribers.values { subscriber.handler(current) }
         }
     }
+}
+
+/// The frame for a popup of `size` next to `anchor`, in AppKit coordinates: below the anchor, above it when there is no room below, then clamped into `visible`.
+public func popupFrame(anchor: CGRect, size: CGSize, visible: CGRect) -> CGRect {
+    var origin = CGPoint(x: anchor.minX, y: anchor.minY - size.height)
+    if origin.y < visible.minY { origin.y = anchor.maxY }
+    origin.x = max(visible.minX, min(origin.x, visible.maxX - size.width))
+    origin.y = max(visible.minY, min(origin.y, visible.maxY - size.height))
+    return CGRect(origin: origin, size: size)
 }
