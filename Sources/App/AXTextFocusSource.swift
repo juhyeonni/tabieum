@@ -7,6 +7,9 @@ import NotesCore
 final class AXTextFocusSource: TextFocusSource {
     private var onChange: (() -> Void)?
     private var observer: AXObserver?
+    private var attachedPID: pid_t?
+    private var lastRegistrationFailed = false
+    private var retryTimer: Timer?
     private var workspaceTokens: [NSObjectProtocol] = []
 
     var isTrusted: Bool { AXIsProcessTrusted() }
@@ -101,40 +104,85 @@ final class AXTextFocusSource: TextFocusSource {
                 MainActor.assumeIsolated { self?.workspaceChanged(notesTerminated: terminatedNotes) }
             }
         }
-        attach()
+        attachIfNeeded()
     }
 
     func stopObserving() {
         workspaceTokens.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
         workspaceTokens = []
-        detach()
+        dropObserver()
         onChange = nil
     }
 
     private func workspaceChanged(notesTerminated: Bool) {
-        if notesTerminated { detach() } else { attach() }
+        if notesTerminated { dropObserver() } else { attachIfNeeded() }
         onChange?()
     }
 
+    private func attachIfNeeded() {
+        guard shouldAttachObserver(attachedPID: attachedPID, runningPID: notesPID(), lastRegistrationFailed: lastRegistrationFailed) else { return }
+        attach()
+    }
+
     private func attach() {
-        guard observer == nil, isTrusted, let pid = notesPID() else { return }
+        detach()
+        guard isTrusted, let pid = notesPID() else { return }
         var created: AXObserver?
         let callback: AXObserverCallback = { _, _, _, refcon in
             guard let refcon else { return }
             let source = Unmanaged<AXTextFocusSource>.fromOpaque(refcon).takeUnretainedValue()
             MainActor.assumeIsolated { source.onChange?() }
         }
-        guard AXObserverCreate(pid, callback, &created) == .success, let created else { return }
+        guard AXObserverCreate(pid, callback, &created) == .success, let created else { return scheduleRetry() }
         let app = AXUIElementCreateApplication(pid)
         let refcon = Unmanaged.passUnretained(self).toOpaque()
-        for name in [kAXFocusedUIElementChangedNotification, kAXSelectedTextChangedNotification, kAXValueChangedNotification] {
-            AXObserverAddNotification(created, app, name as CFString, refcon)
+        let names = [kAXFocusedUIElementChangedNotification, kAXSelectedTextChangedNotification, kAXValueChangedNotification]
+        let registered = names.allSatisfy {
+            let result = AXObserverAddNotification(created, app, $0 as CFString, refcon)
+            return result == .success || result == .notificationAlreadyRegistered
+        }
+        guard registered else {
+            lastRegistrationFailed = true
+            return scheduleRetry()
         }
         CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(created), .defaultMode)
         observer = created
+        attachedPID = pid
+        lastRegistrationFailed = false
+    }
+
+    private func scheduleRetry() {
+        lastRegistrationFailed = true
+        guard retryTimer == nil else { return }
+        var tries = 0
+        retryTimer = Timer.scheduledTimer(withTimeInterval: ObserverRetryPlan.interval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                tries += 1
+                let running = self.notesPID() != nil
+                if running { self.attach() }
+                let succeeded = !self.lastRegistrationFailed
+                if !running || !ObserverRetryPlan.shouldRetry(tries: tries, succeeded: succeeded) {
+                    self.cancelRetry()
+                    if succeeded { self.onChange?() }
+                }
+            }
+        }
+    }
+
+    private func dropObserver() {
+        cancelRetry()
+        lastRegistrationFailed = false
+        detach()
+    }
+
+    private func cancelRetry() {
+        retryTimer?.invalidate()
+        retryTimer = nil
     }
 
     private func detach() {
+        attachedPID = nil
         guard let observer else { return }
         CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .defaultMode)
         self.observer = nil
@@ -149,6 +197,7 @@ final class AXTextFocusSource: TextFocusSource {
 
     private func focusedElement() -> AXUIElement? {
         guard isTrusted, let pid = notesPID() else { return nil }
+        if onChange != nil, retryTimer == nil { attachIfNeeded() }
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, Self.messagingTimeout)
         guard let element: CFTypeRef = value(app, kAXFocusedUIElementAttribute),
