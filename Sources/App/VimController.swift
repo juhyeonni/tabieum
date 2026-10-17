@@ -45,6 +45,8 @@ final class VimController {
     private let tracker: TextFocusTracker
     private let indicator = ModeIndicator()
     private let searchInput = SearchInput()
+    private let shading = SearchShading()
+    private var scrollMonitor: Any?
     private var editorFrame: CGRect?
     private var engine = VimEngine()
     private var tap: CFMachPort?
@@ -93,6 +95,9 @@ final class VimController {
         self.tap = tap
         runLoopSource = source
         subscription = tracker.subscribe { [weak self] in self?.refresh($0) }
+        scrollMonitor = NSEvent.addGlobalMonitorForEvents(matching: .scrollWheel) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshShading() }
+        }
         log.notice("Vim on: event tap installed")
     }
 
@@ -113,6 +118,10 @@ final class VimController {
         swallowed = []
         queue = []
         engine.searchStatus = nil
+        engine.clearSearchPattern()
+        if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
+        scrollMonitor = nil
+        shading.hide()
         indicator.hide()
         log.notice("Vim off: event tap removed")
     }
@@ -272,6 +281,22 @@ final class VimController {
         unsupported = buffer != nil && !active
         editorFrame = state.editorFrame
         indicator.show(engine.mode, in: state.editorFrame, detail: [engine.searchStatus, latencyText].compactMap { $0 }.joined(separator: " "))
+        showShading(buffer, frame: state.editorFrame)
+    }
+
+    private func refreshShading() {
+        guard tap != nil else { return }
+        showShading(tracker.buffer(), frame: tracker.state(withCaretRect: false).editorFrame)
+    }
+
+    private func showShading(_ buffer: VimBuffer?, frame: CGRect?) {
+        guard let buffer, let visible = buffer.visible, let frame else { return shading.hide() }
+        let matches = vimVisibleMatches(
+            in: buffer.text, pattern: engine.searchPattern, visible: visible, current: buffer.selection)
+        let rects = matches.compactMap { match in
+            tracker.bounds(for: match.range).flatMap { $0.size == .zero ? nil : (rect: $0, isCurrent: match.isCurrent) }
+        }
+        shading.show(rects, in: frame)
     }
 
     // MARK: - search
@@ -293,6 +318,47 @@ final class VimController {
             guard let pattern else { return }
             enqueue(.search(pattern, forward: forward), start: DispatchTime.now().uptimeNanoseconds)
         }
+    }
+}
+
+/// A click-through window over the editor that shades search matches; the current one is drawn stronger.
+@MainActor
+final class SearchShading {
+    private final class ShadeView: NSView {
+        var rects: [(rect: CGRect, isCurrent: Bool)] = []
+        override var isFlipped: Bool { true }
+        override func draw(_ dirtyRect: NSRect) {
+            for (rect, isCurrent) in rects {
+                NSColor.systemYellow.withAlphaComponent(isCurrent ? 0.6 : 0.25).setFill()
+                rect.fill()
+            }
+        }
+    }
+
+    private let view = ShadeView()
+    private lazy var window: NSWindow = {
+        let window = NSWindow(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: true)
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = false
+        window.ignoresMouseEvents = true
+        window.level = .floating
+        window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+        window.contentView = view
+        return window
+    }()
+
+    /// `rects` are in AX coordinates.
+    func show(_ rects: [(rect: CGRect, isCurrent: Bool)], in frame: CGRect) {
+        guard !rects.isEmpty, let primary = NSScreen.screens.first else { return hide() }
+        view.rects = rects.map { (CGRect(x: $0.rect.minX - frame.minX, y: $0.rect.minY - frame.minY, width: $0.rect.width, height: $0.rect.height), $0.isCurrent) }
+        window.setFrame(appKitRect(fromAX: frame, primaryScreenHeight: primary.frame.height), display: true)
+        view.needsDisplay = true
+        window.orderFrontRegardless()
+    }
+
+    func hide() {
+        window.orderOut(nil)
     }
 }
 

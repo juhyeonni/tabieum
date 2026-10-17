@@ -124,3 +124,35 @@ private func search(_ marked: String, _ pattern: String, forward: Bool = true) -
     _ = b.press(VimKey("/"))
     #expect(b.engine.searchStatus == nil)
 }
+
+// AC1 (#102)
+@Test func visibleMatchesMarkTheCurrentOneAndUseSmartcase() {
+    let text = "foo Foo foo"
+    let all = NSRange(location: 0, length: 11)
+    #expect(vimVisibleMatches(in: text, pattern: "foo", visible: all, current: NSRange(location: 4, length: 3)).map(\.isCurrent) == [false, true, false])
+    #expect(vimVisibleMatches(in: text, pattern: "Foo", visible: all, current: nil).map(\.range) == [NSRange(location: 4, length: 3)])
+}
+
+// AC2 (#102)
+@Test func visibleMatchesAreCappedAndEmptyWithoutPattern() {
+    let text = String(repeating: "a", count: 500)
+    #expect(vimVisibleMatches(in: text, pattern: "a", visible: NSRange(location: 0, length: 500), current: nil).count == 200)
+    #expect(vimVisibleMatches(in: text, pattern: "", visible: NSRange(location: 0, length: 500), current: nil).isEmpty)
+    #expect(vimVisibleMatches(in: text, pattern: nil, visible: NSRange(location: 0, length: 500), current: nil).isEmpty)
+}
+
+// AC3 (#102)
+@Test func visibleMatchesIncludeOnesStraddlingTheEdge() {
+    let text = "xxfooxx"
+    #expect(vimVisibleMatches(in: text, pattern: "foo", visible: NSRange(location: 0, length: 3), current: nil).count == 1)
+    #expect(vimVisibleMatches(in: text, pattern: "foo", visible: NSRange(location: 4, length: 3), current: nil).count == 1)
+    #expect(vimVisibleMatches(in: text, pattern: "foo", visible: NSRange(location: 0, length: 2), current: nil).isEmpty)
+    #expect(vimVisibleMatches(in: text, pattern: "foo", visible: NSRange(location: 5, length: 2), current: nil).isEmpty)
+}
+
+@Test func escapeInNormalModeClearsTheSearchPattern() {
+    var h = search("|a foo b foo", "foo")
+    #expect(h.engine.searchPattern == "foo")
+    _ = h.press(VimKey.escape)
+    #expect(h.engine.searchPattern == nil)
+}

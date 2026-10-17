@@ -123,6 +123,11 @@ public final class TextFocusTracker {
         source.setSelectedRange(NSRange(location: location, length: min(max(range.length, 0), length - location)))
     }
 
+    /// In AX coordinates.
+    public func bounds(for range: NSRange) -> CGRect? {
+        isFocused ? source.bounds(for: range) : nil
+    }
+
     public func caretRect() -> CGRect? {
         guard isFocused, let range = source.selectedRange() else { return nil }
         if range.length > 0 { return source.bounds(for: range) }
