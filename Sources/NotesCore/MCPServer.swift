@@ -20,7 +20,7 @@ public struct MCPServer: Sendable {
             case .searchNotes: "Search the user's notes. Returns the best matches with a snippet."
             case .getNote: "Read one note as Markdown by its id."
             case .listBacklinks: "List the notes that link to one note, by its id."
-            case .createNote: "Create a note from a title and a Markdown body. It goes into the folder the owner chose and may need the owner's approval in the app."
+            case .createNote: "Create a note from a Markdown body. Notes uses the first line as the note's title, so start the body with a heading. It goes into the folder the owner chose and may need the owner's approval in the app."
             case .deleteNote: "Move a note to Recently Deleted, where the owner can restore it. It may need the owner's approval in the app."
             case .updateNote: "Replace the whole body of an existing note with Markdown. Read the note with get_note first and pass its modified value as expected_modified; the edit is refused if the note changed since. It may need the owner's approval in the app."
             }
@@ -35,8 +35,8 @@ public struct MCPServer: Sendable {
             case .getNote, .listBacklinks, .deleteNote:
                 ["type": "object", "required": ["id"], "properties": ["id": ["type": "string"]]]
             case .createNote:
-                ["type": "object", "required": ["title", "body"], "properties": [
-                    "title": ["type": "string", "minLength": 1],
+                ["type": "object", "required": ["body"], "properties": [
+                    "title": ["type": "string", "description": "Optional. Put in front of the body as a heading; leave it out when the body starts with its own title."],
                     "body": ["type": "string", "description": "Markdown: headings, lists, bold, italic and inline code."]]]
             case .updateNote:
                 ["type": "object", "required": ["id", "body", "expected_modified"], "properties": [
@@ -175,12 +175,18 @@ public struct MCPServer: Sendable {
     }
 
     private func createNote(_ arguments: [String: Any]) throws -> String {
-        guard let title = arguments["title"] as? String, !title.isEmpty else {
-            throw ToolFailure(message: "title must be a non-empty string.")
+        var title: String?
+        if let given = arguments["title"] {
+            guard let text = given as? String else { throw ToolFailure(message: "title must be a string.") }
+            title = text.isEmpty ? nil : text
         }
         guard let body = arguments["body"] as? String else { throw ToolFailure(message: "body must be a string.") }
-        return try askApp(["action": "create", "title": title, "html": NoteHTML.html(fromMarkdown: body)],
-                          success: "Created the note in the target folder.")
+        guard title != nil || !body.allSatisfy(\.isWhitespace) else {
+            throw ToolFailure(message: "body must not be empty when there is no title.")
+        }
+        var request: [String: Any] = ["action": "create", "html": NoteHTML.html(fromMarkdown: body)]
+        request["title"] = title
+        return try askApp(request, success: "Created the note in the target folder.")
     }
 
     private func updateNote(_ arguments: [String: Any]) throws -> String {
