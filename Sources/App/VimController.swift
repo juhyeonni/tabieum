@@ -58,6 +58,7 @@ final class VimController {
     private var active = false
     /// The note body is focused but Vim cannot trust AX here (a table or attachment line, a selection that does not stick).
     private var unsupported = false
+    private var searchOpen = false
     private var mismatchLine: NSRange?
     private var swallowed: Set<Int64> = []
     private var queue: [(command: VimCommand, start: UInt64)] = []
@@ -271,15 +272,23 @@ final class VimController {
         active = buffer != nil && mismatchLine == nil
         unsupported = buffer != nil && !active
         editorFrame = state.editorFrame
-        indicator.show(engine.mode, in: state.editorFrame, detail: [engine.searchStatus, latencyText].compactMap { $0 }.joined(separator: " "))
+        if searchOpen {
+            indicator.hide()
+        } else {
+            indicator.show(
+                engine.mode, in: state.editorFrame,
+                detail: [engine.searchStatus, latencyText].compactMap { $0 }.joined(separator: " "))
+        }
     }
 
     // MARK: - search
 
     private func openSearch(forward: Bool) {
         guard let editorFrame else { return }
+        searchOpen = true
         indicator.hide()
         searchInput.show(forward: forward, in: editorFrame) { [weak self] pattern in
+            self?.searchOpen = false
             self?.closeSearch(pattern, forward: forward)
             self?.refresh(self?.tracker.state ?? .notFocused)
         }
