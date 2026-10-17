@@ -24,11 +24,23 @@ public enum VimMode: Equatable, Sendable {
     case normal, insert, visual, search
 }
 
+public struct VimFind: Equatable, Sendable {
+    var char: Character
+    var forward: Bool
+    var till: Bool
+}
+
 public enum VimMotion: Equatable, Sendable {
     case left, right, down, up
     case wordForward, wordBackward, wordEnd
+    case bigWordForward, bigWordBackward, bigWordEnd
     case lineStart, firstNonBlank, lineEnd
     case firstLine, lastLine
+    case paragraphForward, paragraphBackward, matchBracket
+    case screenTop, screenMiddle, screenBottom
+    case halfPageDown, halfPageUp, pageDown, pageUp
+    case find(VimFind)
+    case repeatFind(reverse: Bool)
 
     init?(_ c: Character) {
         switch c {
@@ -39,10 +51,31 @@ public enum VimMotion: Equatable, Sendable {
         case "w": self = .wordForward
         case "b": self = .wordBackward
         case "e": self = .wordEnd
+        case "W": self = .bigWordForward
+        case "B": self = .bigWordBackward
+        case "E": self = .bigWordEnd
+        case "}": self = .paragraphForward
+        case "{": self = .paragraphBackward
+        case "%": self = .matchBracket
+        case "H": self = .screenTop
+        case "M": self = .screenMiddle
+        case "L": self = .screenBottom
+        case ";": self = .repeatFind(reverse: false)
+        case ",": self = .repeatFind(reverse: true)
         case "0": self = .lineStart
         case "^": self = .firstNonBlank
         case "$": self = .lineEnd
         case "G": self = .lastLine
+        default: return nil
+        }
+    }
+
+    init?(control c: Character) {
+        switch c {
+        case "d": self = .halfPageDown
+        case "u": self = .halfPageUp
+        case "f": self = .pageDown
+        case "b": self = .pageUp
         default: return nil
         }
     }
@@ -122,6 +155,8 @@ public struct VimEngine: Sendable {
     private var searchInput = ""
     private var searchForward = true
     private var lastSearch: (pattern: String, forward: Bool)?
+    private var lastFind: VimFind?
+    private var visible: NSRange?
 
     /// What the command line shows while a search pattern is typed.
     public var searchPrompt: String? {
@@ -200,14 +235,24 @@ public struct VimEngine: Sendable {
             reset()
             return .consume(.redo)
         }
+        if key.control, let motion = VimMotion(control: key.character) {
+            return .consume(op == nil ? finish(.motion(motion)) : cancel())
+        }
         guard key.isPlain else { reset(); return .consume(.none) }
         let c = key.character
         if prefix == "r" { return .consume(c == "\n" ? cancel() : finish(.replaceChar(c))) }
         if prefix == "g" { return .consume(c == "g" ? motionOrOperate(.firstLine) : cancel()) }
+        if let prefix, "ftFT".contains(prefix) {
+            guard c != "\n" else { return .consume(cancel()) }
+            let find = VimFind(char: c, forward: "ft".contains(prefix), till: "tT".contains(prefix))
+            lastFind = find
+            return .consume(motionOrOperate(.find(find)))
+        }
         if let digit = c.isASCII ? c.wholeNumberValue : nil, digit > 0 || count != nil {
             count = min((count ?? 0) * 10 + digit, 9999)
             return .consume(.none)
         }
+        if "ftFT".contains(c) { pending = c; return .consume(.none) }
         if let op {
             if VimOperator(c) == op { return .consume(operate(.operateLines(op))) }
             if c == "g" { pending = c; return .consume(.none) }
@@ -301,6 +346,7 @@ public struct VimEngine: Sendable {
 
     private mutating func run(_ command: VimCommand, _ n: Int, on buffer: VimBuffer) -> [VimAction] {
         let t = VimText(buffer.text)
+        visible = buffer.visible
         let goal = self.goal
         self.goal = nil
         let raw = t.index(at: buffer.selection.location)
@@ -558,30 +604,49 @@ public struct VimEngine: Sendable {
         switch motion {
         case .left: return (max(cur - n, t.lineStart(cur)), cur, false)
         case .right: return (cur, min(cur + n, lineEnd), false)
-        case .wordForward:
-            if op == .change, cur < t.count, charClass(t.chars[cur]) != .blank {
-                let cls = charClass(t.chars[cur])
+        case .wordForward, .bigWordForward:
+            let big = motion == .bigWordForward
+            if op == .change, cur < t.count, charClass(t.chars[cur], big) != .blank {
+                let cls = charClass(t.chars[cur], big)
                 var e = cur
-                while e + 1 < t.count && charClass(t.chars[e + 1]) == cls { e += 1 }
-                for _ in 1..<n { e = wordEnd(e, in: t) }
+                while e + 1 < t.count && charClass(t.chars[e + 1], big) == cls { e += 1 }
+                for _ in 1..<n { e = wordEnd(e, in: t, big) }
                 return (cur, e + 1, false)
             }
             var i = cur, last = cur
             for _ in 0..<n {
                 last = i
-                let next = wordForward(i, in: t, clamped: false)
+                let next = wordForward(i, in: t, clamped: false, big: big)
                 guard next != i else { break }
                 i = next
             }
             return (cur, min(i, t.lineEnd(last)), false)
-        case .wordBackward:
+        case .wordBackward, .bigWordBackward:
             var i = cur
-            for _ in 0..<n { i = wordBackward(i, in: t) }
+            for _ in 0..<n { i = wordBackward(i, in: t, motion == .bigWordBackward) }
             return (i, cur, false)
-        case .wordEnd:
+        case .wordEnd, .bigWordEnd:
             var i = cur
-            for _ in 0..<n { i = wordEnd(i, in: t) }
+            for _ in 0..<n { i = wordEnd(i, in: t, motion == .bigWordEnd) }
             return (cur, min(i + 1, t.count), false)
+        case .paragraphForward:
+            var i = cur
+            for _ in 0..<n { i = paragraph(forward: true, from: i, in: t) }
+            return (cur, i, false)
+        case .paragraphBackward:
+            var i = cur
+            for _ in 0..<n { i = paragraph(forward: false, from: i, in: t) }
+            return (i, cur, false)
+        case .matchBracket:
+            guard let m = matchBracket(cur, in: t) else { return nil }
+            return (min(cur, m.match), max(m.bracket, m.match) + 1, false)
+        case .find, .repeatFind:
+            guard let hit = findTarget(motion, n, from: cur, in: t) else { return nil }
+            return hit.find.forward ? (cur, hit.target + 1, false) : (hit.target, cur, false)
+        case .screenTop, .screenMiddle, .screenBottom:
+            let target = screenLine(motion, t)
+            return (min(t.lineStart(cur), target), max(lineEnd, t.lineEnd(target)), true)
+        case .halfPageDown, .halfPageUp, .pageDown, .pageUp: return nil
         case .lineStart: return (t.lineStart(cur), cur, false)
         case .firstNonBlank:
             let f = t.firstNonBlank(cur, clamped: false)
@@ -605,6 +670,7 @@ public struct VimEngine: Sendable {
     private mutating func travel(
         _ motion: VimMotion, _ n: Int, from start: Int, in t: VimText, goal: (offset: Int, column: Int)?
     ) -> Int {
+        if let hit = findTarget(motion, n, from: start, in: t) { return hit.target }
         var pos = start, goal = goal
         for _ in 0..<n {
             let new = move(motion, from: pos, in: t, goal: goal)
@@ -638,14 +704,28 @@ public struct VimEngine: Sendable {
         switch motion {
         case .left: return stepLeft(i, in: t)
         case .right: return i + 1 < t.lineEnd(i) ? i + 1 : i
-        case .down, .up:
+        case .down, .up, .halfPageDown, .halfPageUp, .pageDown, .pageUp:
             let column = goal?.offset == t.offsets[i] ? goal!.column : i - t.lineStart(i)
-            let new = vertical(motion == .down, from: i, column: column, in: t)
+            let pageLines = visibleLineStarts(t).count
+            let (down, lines) = switch motion {
+            case .halfPageDown: (true, max(pageLines / 2, 1))
+            case .halfPageUp: (false, max(pageLines / 2, 1))
+            case .pageDown: (true, max(pageLines, 1))
+            case .pageUp: (false, max(pageLines, 1))
+            default: (motion == .down, 1)
+            }
+            var new = i
+            for _ in 0..<lines { new = vertical(down, from: new, column: column, in: t) }
             self.goal = (t.offsets[new], column)
             return new
-        case .wordForward: return wordForward(i, in: t)
-        case .wordBackward: return wordBackward(i, in: t)
-        case .wordEnd: return wordEnd(i, in: t)
+        case .wordForward, .bigWordForward: return wordForward(i, in: t, big: motion == .bigWordForward)
+        case .wordBackward, .bigWordBackward: return wordBackward(i, in: t, motion == .bigWordBackward)
+        case .wordEnd, .bigWordEnd: return wordEnd(i, in: t, motion == .bigWordEnd)
+        case .paragraphForward: return t.clamp(paragraph(forward: true, from: i, in: t))
+        case .paragraphBackward: return paragraph(forward: false, from: i, in: t)
+        case .matchBracket: return matchBracket(i, in: t)?.match ?? i
+        case .screenTop, .screenMiddle, .screenBottom: return t.firstNonBlank(screenLine(motion, t))
+        case .find, .repeatFind: return i
         case .lineStart: return t.lineStart(i)
         case .firstNonBlank: return t.firstNonBlank(i)
         case .lineEnd:
@@ -671,21 +751,113 @@ public struct VimEngine: Sendable {
         return start + min(column, t.lastChar(start) - start)
     }
 
+    /// Line starts of the lines in view, or of every line when the editor does not say.
+    private func visibleLineStarts(_ t: VimText) -> [Int] {
+        var first = 0, last = t.count
+        if let visible {
+            first = t.lineStart(t.index(at: visible.location))
+            last = t.index(at: max(NSMaxRange(visible) - 1, visible.location))
+        }
+        var starts = [first]
+        var end = t.lineEnd(first)
+        while end < last && end < t.count {
+            starts.append(end + 1)
+            end = t.lineEnd(end + 1)
+        }
+        return starts
+    }
+
+    private func screenLine(_ motion: VimMotion, _ t: VimText) -> Int {
+        let starts = visibleLineStarts(t)
+        switch motion {
+        case .screenTop: return starts[0]
+        case .screenMiddle: return starts[(starts.count - 1) / 2]
+        default: return starts[starts.count - 1]
+        }
+    }
+
+    /// The start of the next blank line, or the end of the text; backwards, the previous one or the start.
+    private func paragraph(forward: Bool, from cur: Int, in t: VimText) -> Int {
+        func blank(_ i: Int) -> Bool { t.lineStart(i) == t.lineEnd(i) }
+        func neighbour(_ i: Int) -> Int? {
+            if forward {
+                let end = t.lineEnd(i)
+                return end < t.count ? end + 1 : nil
+            }
+            let start = t.lineStart(i)
+            return start > 0 ? t.lineStart(start - 1) : nil
+        }
+        var i = t.lineStart(cur)
+        while blank(i), let next = neighbour(i) { i = next }
+        while !blank(i) {
+            guard let next = neighbour(i) else { return forward ? t.count : 0 }
+            i = next
+        }
+        return i
+    }
+
+    /// The bracket at or after `cur` on its line and the one it pairs with, across lines.
+    private func matchBracket(_ cur: Int, in t: VimText) -> (bracket: Int, match: Int)? {
+        let opens: [Character] = ["(", "[", "{"], closes: [Character] = [")", "]", "}"]
+        var i = cur
+        let end = t.lineEnd(cur)
+        while i < end && !opens.contains(t.chars[i]) && !closes.contains(t.chars[i]) { i += 1 }
+        guard i < end else { return nil }
+        let forward = opens.contains(t.chars[i])
+        let k = (forward ? opens.firstIndex(of: t.chars[i]) : closes.firstIndex(of: t.chars[i]))!
+        let (same, other) = forward ? (opens[k], closes[k]) : (closes[k], opens[k])
+        var depth = 0, j = i
+        while j >= 0 && j < t.count {
+            if t.chars[j] == same { depth += 1 }
+            if t.chars[j] == other { depth -= 1 }
+            if depth == 0 { return (i, j) }
+            j += forward ? 1 : -1
+        }
+        return nil
+    }
+
+    /// Where `f`, `t`, `F`, `T` (or `;` and `,`) land, on the caret's line only.
+    private func findTarget(_ motion: VimMotion, _ n: Int, from cur: Int, in t: VimText) -> (find: VimFind, target: Int)? {
+        var find: VimFind
+        var repeating = false
+        switch motion {
+        case .find(let f): find = f
+        case .repeatFind(let reverse):
+            guard let last = lastFind else { return nil }
+            find = last
+            if reverse { find.forward.toggle() }
+            repeating = true
+        default: return nil
+        }
+        let step = find.forward ? 1 : -1
+        let start = t.lineStart(cur), end = t.lineEnd(cur)
+        var i = cur
+        for k in 0..<n {
+            var j = i + step
+            if k == 0 && repeating && find.till { j += step }
+            while j >= start && j < end && t.chars[j] != find.char { j += step }
+            guard j >= start && j < end else { return nil }
+            i = j
+        }
+        return (find, find.till ? i - step : i)
+    }
+
     private enum CharClass { case blank, word, other }
 
-    private func charClass(_ c: Character) -> CharClass {
+    private func charClass(_ c: Character, _ big: Bool = false) -> CharClass {
         if c.isWhitespace { return .blank }
+        if big { return .word }
         return c.isLetter || c.isNumber || c == "_" ? .word : .other
     }
 
-    private func wordForward(_ cur: Int, in t: VimText, clamped: Bool = true) -> Int {
+    private func wordForward(_ cur: Int, in t: VimText, clamped: Bool = true, big: Bool = false) -> Int {
         guard cur < t.count else { return cur }
         var i = cur
-        let start = charClass(t.chars[i])
+        let start = charClass(t.chars[i], big)
         if start != .blank {
-            while i < t.count && charClass(t.chars[i]) == start { i += 1 }
+            while i < t.count && charClass(t.chars[i], big) == start { i += 1 }
         }
-        while i < t.count && charClass(t.chars[i]) == .blank {
+        while i < t.count && charClass(t.chars[i], big) == .blank {
             let newline = t.chars[i] == "\n"
             i += 1
             if newline && (i == t.count || t.chars[i] == "\n") { return i }
@@ -693,25 +865,25 @@ public struct VimEngine: Sendable {
         return clamped ? t.clamp(i) : i
     }
 
-    private func wordBackward(_ cur: Int, in t: VimText) -> Int {
+    private func wordBackward(_ cur: Int, in t: VimText, _ big: Bool = false) -> Int {
         guard cur > 0 else { return 0 }
         var i = cur - 1
-        while i > 0 && charClass(t.chars[i]) == .blank {
+        while i > 0 && charClass(t.chars[i], big) == .blank {
             if t.chars[i] == "\n" && t.chars[i - 1] == "\n" { return i }
             i -= 1
         }
-        let cls = charClass(t.chars[i])
+        let cls = charClass(t.chars[i], big)
         guard cls != .blank else { return i }
-        while i > 0 && charClass(t.chars[i - 1]) == cls { i -= 1 }
+        while i > 0 && charClass(t.chars[i - 1], big) == cls { i -= 1 }
         return i
     }
 
-    private func wordEnd(_ cur: Int, in t: VimText) -> Int {
+    private func wordEnd(_ cur: Int, in t: VimText, _ big: Bool = false) -> Int {
         var i = cur + 1
-        while i < t.count && charClass(t.chars[i]) == .blank { i += 1 }
+        while i < t.count && charClass(t.chars[i], big) == .blank { i += 1 }
         guard i < t.count else { return cur }
-        let cls = charClass(t.chars[i])
-        while i + 1 < t.count && charClass(t.chars[i + 1]) == cls { i += 1 }
+        let cls = charClass(t.chars[i], big)
+        while i + 1 < t.count && charClass(t.chars[i + 1], big) == cls { i += 1 }
         return i
     }
 }

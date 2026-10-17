@@ -16,11 +16,17 @@ public protocol TextFocusSource: AnyObject {
     var text: String? { get }
     /// The focused editor's frame, in AX coordinates.
     var frame: CGRect? { get }
+    /// The characters scrolled into view, or nil when the editor does not say.
+    var visibleRange: NSRange? { get }
     func selectedRange() -> NSRange?
     func setSelectedRange(_ range: NSRange)
     func bounds(for range: NSRange) -> CGRect?
     func startObserving(_ onChange: @escaping () -> Void)
     func stopObserving()
+}
+
+extension TextFocusSource {
+    public var visibleRange: NSRange? { nil }
 }
 
 public struct TextFocusState: Equatable, Sendable {
@@ -108,7 +114,7 @@ public final class TextFocusTracker {
 
     public func buffer() -> VimBuffer? {
         guard isFocused, let text, let selection = source.selectedRange() else { return nil }
-        return VimBuffer(text: text, selection: selection)
+        return VimBuffer(text: text, selection: selection, visible: source.visibleRange)
     }
 
     public func setSelectedRange(_ range: NSRange) {
