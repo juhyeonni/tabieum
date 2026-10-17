@@ -76,6 +76,10 @@ public enum Chunker {
     }
 }
 
+public enum EmbeddingKind: Sendable {
+    case query, passage
+}
+
 public protocol Embedder: Sendable {
     /// The identifier of the model that embeds `text`, or nil when no model covers it.
     func modelID(for text: String) -> String?
@@ -83,6 +87,18 @@ public protocol Embedder: Sendable {
     func isReady(_ modelID: String) -> Bool
     /// An L2-normalized vector.
     func embed(_ text: String, modelID: String) throws -> [Float]
+    /// Like `embed(_:modelID:)`, for models that treat a search query and a stored passage differently.
+    func embed(_ text: String, modelID: String, kind: EmbeddingKind) throws -> [Float]
+    /// Names every model version this embedder can use. When it changes, stored vectors no longer match and are rebuilt.
+    var fingerprint: String { get }
+}
+
+extension Embedder {
+    public var fingerprint: String { "" }
+
+    public func embed(_ text: String, modelID: String, kind: EmbeddingKind) throws -> [Float] {
+        try embed(text, modelID: modelID)
+    }
 }
 
 enum Vector {
@@ -96,7 +112,23 @@ enum Vector {
     }
 }
 
-/// Apple's on-device `NLContextualEmbedding`. The model follows the text's dominant language; token vectors are mean-pooled.
+/// Picks the language whose model embeds a text. Korean wins when Hangul is a real share of the letters, so a Korean note
+/// with English technical terms gets the same model as the Korean queries that look for it.
+enum EmbeddingLanguage {
+    static let hangulShare = 0.15
+
+    static func of(_ text: String) -> NLLanguage {
+        let letters = text.unicodeScalars.filter { $0.properties.isAlphabetic }
+        let hangul = letters.filter { (0xAC00...0xD7A3).contains($0.value) || (0x1100...0x11FF).contains($0.value) || (0x3130...0x318F).contains($0.value) }
+        if !letters.isEmpty, Double(hangul.count) / Double(letters.count) >= hangulShare { return .korean }
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(text)
+        return recognizer.dominantLanguage ?? .english
+    }
+}
+
+/// Apple's on-device `NLContextualEmbedding`. The model follows the text's language; token vectors are mean-pooled.
+/// A model id is its identifier and revision, because Apple warns that vectors of different revisions are not consistent.
 public final class AppleEmbedder: Embedder, @unchecked Sendable {
     private let lock = NSLock()
     private var byLanguage: [NLLanguage: NLContextualEmbedding] = [:]
@@ -105,17 +137,23 @@ public final class AppleEmbedder: Embedder, @unchecked Sendable {
 
     public init() {}
 
+    private static func id(_ model: NLContextualEmbedding) -> String { "\(model.modelIdentifier)@\(model.revision)" }
+
+    /// One language per model family: Latin, Cyrillic, Chinese-Japanese-Korean, Arabic, Indic and Thai.
+    public var fingerprint: String {
+        Set([NLLanguage.english, .russian, .korean, .arabic, .hindi, .thai]
+            .compactMap(NLContextualEmbedding.init(language:)).map(Self.id)).sorted().joined(separator: ",")
+    }
+
     public func modelID(for text: String) -> String? {
-        let recognizer = NLLanguageRecognizer()
-        recognizer.processString(text)
-        let language = recognizer.dominantLanguage ?? .english
+        let language = EmbeddingLanguage.of(text)
         lock.lock()
         defer { lock.unlock() }
-        if let model = byLanguage[language] { return model.modelIdentifier }
+        if let model = byLanguage[language] { return Self.id(model) }
         guard let model = NLContextualEmbedding(language: language) else { return nil }
         byLanguage[language] = model
-        byID[model.modelIdentifier] = model
-        return model.modelIdentifier
+        byID[Self.id(model)] = model
+        return Self.id(model)
     }
 
     public func isReady(_ modelID: String) -> Bool {
@@ -141,9 +179,9 @@ public final class AppleEmbedder: Embedder, @unchecked Sendable {
         return Vector.normalized(sum)
     }
 
-    /// Asks macOS to download the models for the user's languages and English.
+    /// Asks macOS to download the models for the user's languages, English and Korean, which `EmbeddingLanguage` can pick for any note.
     public static func requestAssets() async {
-        let languages = Set(Locale.preferredLanguages.map { NLLanguage(Locale(identifier: $0).language.languageCode?.identifier ?? $0) } + [.english])
+        let languages = Set(Locale.preferredLanguages.map { NLLanguage(Locale(identifier: $0).language.languageCode?.identifier ?? $0) } + [.english, .korean])
         for language in languages {
             guard let model = NLContextualEmbedding(language: language), !model.hasAvailableAssets else { continue }
             _ = try? await model.requestAssets()
@@ -159,6 +197,12 @@ public struct EmbeddingProgress: Equatable, Sendable {
 
 public enum EmbedOutcome: Equatable, Sendable {
     case finished, paused, waitingForModel
+}
+
+public struct PanelHit: Equatable, Sendable {
+    public let note: SearchResult
+    /// True when no word of the query matched; the note was found only by its meaning.
+    public let byMeaningOnly: Bool
 }
 
 public struct HybridResult: Equatable, Sendable {
@@ -183,6 +227,10 @@ extension SearchIndex {
         log: (String) -> Void,
         progress: (EmbeddingProgress) -> Void
     ) throws -> EmbedOutcome {
+        if try meta("embedder") != embedder.fingerprint {
+            try clearChunks()
+            try setMeta("embedder", embedder.fingerprint)
+        }
         let ids = try db.rows("""
             SELECT n.id FROM notes n
             WHERE NOT EXISTS (SELECT 1 FROM chunks c WHERE c.note_id = n.id AND c.modified = n.modified)
@@ -203,7 +251,7 @@ extension SearchIndex {
                     }
                     do {
                         stored.append(StoredChunk(chunk: chunk, model: model,
-                                                  vector: try embedder.embed(chunk.embeddedText, modelID: model)))
+                                                  vector: try embedder.embed(chunk.embeddedText, modelID: model, kind: .passage)))
                     } catch {
                         log("cannot embed note \(id): \(error)")
                         failed = true
@@ -276,7 +324,7 @@ extension SearchIndex {
     /// The best chunk per note by cosine similarity, over chunks of the query's own model only.
     private func vectorHits(_ query: String, embedder: Embedder, limit: Int) throws -> [VectorHit] {
         guard let model = embedder.modelID(for: query), embedder.isReady(model),
-              let queryVector = try? embedder.embed(query, modelID: model) else { return [] }
+              let queryVector = try? embedder.embed(query, modelID: model, kind: .query) else { return [] }
         var best: [String: VectorHit] = [:]
         _ = try db.rows("SELECT note_id, path, text, vec FROM chunks WHERE model = ?1", [.text(model)]) { row -> Void in
             let blob = SQLiteConnection.blob(row, 3)
@@ -306,6 +354,25 @@ extension SearchIndex {
             if results.count == limit { break }
         }
         return results
+    }
+
+    /// What the search panel lists: the full-text hits, or the hybrid order when an embedder is given.
+    /// Notes found only by meaning are marked, and at most `maxMeaningOnly` of them are listed: a match by meaning
+    /// has no score that tells a real one from a weak one.
+    public func panelSearch(_ query: String, embedder: Embedder?, limit: Int = 50, maxMeaningOnly: Int = 20) throws -> [PanelHit] {
+        guard let embedder else { return try search(query, limit: limit).map { PanelHit(note: $0, byMeaningOnly: false) } }
+        let words = Set(try search(query, limit: 50).map(\.id))
+        var meaningOnly = 0
+        var hits: [PanelHit] = []
+        for result in try hybridSearch(query, embedder: embedder, limit: limit) {
+            let byMeaningOnly = !words.contains(result.note.id)
+            if byMeaningOnly {
+                guard meaningOnly < maxMeaningOnly else { continue }
+                meaningOnly += 1
+            }
+            hits.append(PanelHit(note: result.note, byMeaningOnly: byMeaningOnly))
+        }
+        return hits
     }
 
     private func noteResult(_ id: String, snippet: String) throws -> SearchResult? {

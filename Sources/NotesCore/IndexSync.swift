@@ -169,7 +169,7 @@ public final class IndexService: @unchecked Sendable {
         indexURL: URL,
         notesDatabaseURL: URL = NotesReader.defaultDatabaseURL,
         ragEnabled: @escaping @Sendable () -> Bool = { false },
-        makeEmbedder: @escaping @Sendable () -> Embedder = { AppleEmbedder() },
+        makeEmbedder: @escaping @Sendable () -> Embedder = { ConfiguredEmbedder() },
         onProgress: @escaping @Sendable (EmbeddingProgress?) -> Void = { _ in }
     ) {
         let hook = hook
