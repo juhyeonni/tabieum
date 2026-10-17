@@ -66,7 +66,6 @@ struct AITab: View {
 
     var body: some View {
         Form {
-            Toggle("Enable AI", isOn: $toggles.aiEnabled)
             Text("Uses an OpenAI-compatible server such as Ollama or LM Studio. While off, nothing is sent.")
                 .font(.callout).foregroundStyle(.secondary)
             HStack {

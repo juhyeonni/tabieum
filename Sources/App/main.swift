@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var slashCommands: SlashCommands?
     private var indexService: IndexService?
     private let embeddingItem = NSMenuItem()
+    private let embedding = EmbeddingState()
     private var backlinksPanel: BacklinksPanel?
     private var searchPanel: SearchPanel?
     private lazy var searchShortcut = ShortcutController(
@@ -101,13 +102,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func showSettings() {
         let window = settingsWindow ?? makeWindow(title: "Settings", view: SettingsView(
-            status: status, toggles: toggles, ai: ai, shortcuts: [searchShortcut, copyMarkdownShortcut, copyLinkShortcut],
+            status: status, toggles: toggles, ai: ai, embedding: embedding, shortcuts: [searchShortcut, copyMarkdownShortcut, copyLinkShortcut],
             showOnboarding: { [weak self] in self?.showOnboarding() }, setRAG: { [weak self] in self?.setRAG($0) }))
         settingsWindow = window
         show(window)
     }
 
     private func showEmbedding(_ progress: EmbeddingProgress?) {
+        embedding.progress = progress
         guard let progress else {
             embeddingItem.isHidden = true
             return

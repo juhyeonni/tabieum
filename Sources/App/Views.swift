@@ -80,6 +80,7 @@ struct SettingsView: View {
     @ObservedObject var status: PermissionStatus
     @ObservedObject var toggles: FeatureToggles
     let ai: AIFeature
+    let embedding: EmbeddingState
     let shortcuts: [ShortcutController]
     let showOnboarding: () -> Void
     let setRAG: (Bool) -> Void
@@ -110,16 +111,10 @@ struct SettingsView: View {
                     .disabled(!toggles.vimEnabled)
             }
                 .tabItem { Label("Vim", systemImage: "keyboard") }
-            featureTab(Binding(get: { toggles.ragEnabled }, set: setRAG), title: "Enable RAG search",
-                       detail: "Local semantic search over your notes. Runs on this Mac only.")
-                .tabItem { Label("RAG", systemImage: "magnifyingglass") }
-            featureTab($toggles.mcpEnabled, title: "AI agents (MCP)",
-                       detail: "Lets agents such as Claude Desktop search and read your notes through a local, read-only server. See the README for setup.")
-                .tabItem { Label("MCP", systemImage: "point.3.connected.trianglepath.dotted") }
-            AITab(toggles: toggles, feature: ai)
-                .tabItem { Label("AI", systemImage: "sparkles") }
+            AISearchTab(toggles: toggles, embedding: embedding, ai: ai, setRAG: setRAG)
+                .tabItem { Label("AI & Search", systemImage: "sparkles") }
         }
-        .frame(width: 520)
+        .frame(width: 760)
         .padding()
     }
 
