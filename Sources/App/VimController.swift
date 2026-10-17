@@ -46,7 +46,7 @@ final class VimController {
     private let indicator = ModeIndicator()
     private let searchInput = SearchInput()
     private let shading = SearchShading()
-    private let cursorBlock = SearchShading(fill: .controlAccentColor, currentAlpha: 0.45)
+    private let cursorBlock = SearchShading(fill: .labelColor, currentAlpha: 0.35)
     private var cursorSetting = VimCursorSetting.modeBased
     private var scrollMonitor: Any?
     private var editorFrame: CGRect?
@@ -361,7 +361,9 @@ final class VimController {
             if !isBreak, let rect = tracker.bounds(for: range), rect.size != .zero { return rect }
         }
         guard let line = tracker.caretRect(), line.height > 0 else { return nil }
-        return CGRect(x: line.maxX, y: line.minY, width: line.height / 2, height: line.height)
+        let afterCharacter = at > 0 && !ns.substring(with: ns.rangeOfComposedCharacterSequence(at: at - 1))
+            .trimmingCharacters(in: .newlines).isEmpty
+        return CGRect(x: afterCharacter ? line.maxX : line.minX, y: line.minY, width: line.height / 2, height: line.height)
     }
 
     private func refreshShading() {
