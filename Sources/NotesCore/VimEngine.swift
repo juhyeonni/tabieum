@@ -195,6 +195,10 @@ public struct VimEngine: Sendable {
 
     public var isRecording: Bool { recording != nil }
     public var searchStatus: String?
+    /// The pattern of the last search, shaded in the editor until Esc in Normal mode.
+    public private(set) var searchPattern: String?
+
+    public mutating func clearSearchPattern() { searchPattern = nil }
 
     public init(mode: VimMode = .normal, jkEnabled: Bool = false) {
         self.mode = mode
@@ -267,6 +271,7 @@ public struct VimEngine: Sendable {
         if key.command { reset(); return .passThrough }
         if key.isEscape {
             reset()
+            if mode == .normal { searchPattern = nil }
             guard inVisual, !busy else { return .consume(.none) }
             mode = .normal
             return .consume(.exitVisual)
@@ -617,15 +622,18 @@ public struct VimEngine: Sendable {
         case .search(let typed, let forward):
             guard let pattern = typed.isEmpty ? lastSearch?.pattern : typed else { return [] }
             lastSearch = (pattern, forward)
+            searchPattern = pattern
             return find(pattern, forward, from: cur, buffer, t)
 
         case .searchNext(let reverse):
             guard let last = lastSearch else { return [] }
+            searchPattern = last.pattern
             return find(last.pattern, last.forward != reverse, from: cur, buffer, t)
 
         case .searchWord(let forward):
             guard let word = wordUnder(cur, in: t) else { return [] }
             lastSearch = (word.text, forward)
+            searchPattern = word.text
             return find(word.text, forward, from: word.start, buffer, t)
 
         case .enterVisual, .enterVisualLine:
@@ -1232,6 +1240,22 @@ public func vimSearchStatus(in text: String, pattern: String, forward: Bool, cur
         return head + "no match"
     }
     return head + "\(index + 1)/\(matches.count)"
+}
+
+public struct VimMatch: Equatable, Sendable {
+    public var range: NSRange
+    public var isCurrent: Bool
+}
+
+public let vimMaxVisibleMatches = 200
+
+/// The matches of `pattern` that show in `visible`, at most `vimMaxVisibleMatches`; the one starting at `current` is marked.
+public func vimVisibleMatches(in text: String, pattern: String?, visible: NSRange, current: NSRange?) -> [VimMatch] {
+    guard let pattern else { return [] }
+    return vimMatches(in: text, pattern: pattern)
+        .filter { NSIntersectionRange($0, visible).length > 0 }
+        .prefix(vimMaxVisibleMatches)
+        .map { VimMatch(range: $0, isCurrent: $0.location == current?.location) }
 }
 
 func vimMatches(in text: String, pattern: String) -> [NSRange] {
