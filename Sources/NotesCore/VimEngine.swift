@@ -98,13 +98,17 @@ public enum VimInsertion: Equatable, Sendable {
 }
 
 public enum VimOperator: Equatable, Sendable {
-    case delete, change, yank
+    case delete, change, yank, indent, outdent
+
+    var isShift: Bool { self == .indent || self == .outdent }
 
     init?(_ c: Character) {
         switch c {
         case "d": self = .delete
         case "c": self = .change
         case "y": self = .yank
+        case ">": self = .indent
+        case "<": self = .outdent
         default: return nil
         }
     }
@@ -544,6 +548,7 @@ public struct VimEngine: Sendable {
             return remove(buffer, t, cur, end) { $0.clamp($1) }
 
         case .operateLines(let op):
+            if op.isShift { return shift(op, t.lineStart(cur), lastLineEnd(cur, n, in: t), t) }
             return lines(op, t.lineStart(cur), lastLineEnd(cur, n, in: t), buffer, t)
 
         case .operate(let op, let motion):
@@ -551,6 +556,7 @@ public struct VimEngine: Sendable {
                 if op == .change { mode = .normal }
                 return []
             }
+            if op.isShift { return shift(op, span.lo, span.hi, t) }
             if span.linewise { return lines(op, span.lo, span.hi, buffer, t) }
             return characters(op, span.lo, span.hi, buffer, t)
 
@@ -559,6 +565,7 @@ public struct VimEngine: Sendable {
                 if op == .change { mode = .normal }
                 return []
             }
+            if op.isShift { return shift(op, span.lo, span.hi, t) }
             if span.linewise { return lines(op, span.lo, span.hi, buffer, t) }
             return characters(op, span.lo, span.hi, buffer, t)
 
@@ -761,6 +768,11 @@ public struct VimEngine: Sendable {
         return actions + [.select(t.range(new, new))]
     }
 
+    private func shift(_ op: VimOperator, _ lo: Int, _ hi: Int, _ t: VimText) -> [VimAction] {
+        let start = t.lineStart(lo), end = t.lineEnd(hi)
+        return [.indent(t.range(start, min(end + 1, t.count)), outdent: op == .outdent), .select(t.range(start, start))]
+    }
+
     private mutating func remove(
         _ buffer: VimBuffer, _ t: VimText, _ lo: Int, _ hi: Int, place: (VimText, Int) -> Int
     ) -> [VimAction] {
@@ -779,6 +791,8 @@ public struct VimEngine: Sendable {
         case .yank:
             register = .charwise(t.string(lo, hi))
             return caret
+        case .indent, .outdent:
+            return []
         case .delete:
             return remove(buffer, t, lo, hi) { $1 }
         case .change:
