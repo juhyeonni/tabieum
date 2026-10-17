@@ -65,6 +65,8 @@ final class VimController {
     private var swallowed: Set<Int64> = []
     private var queue: [(command: VimCommand, start: UInt64)] = []
     private var draining = false
+    private var sessionStart: String?
+    private var redoSteps: Int?
     private var latencies = LatencyWindow()
     private var latencyText: String?
     var showsLatency = false {
@@ -184,6 +186,13 @@ final class VimController {
 
     private func run(_ command: VimCommand) async {
         guard let buffer = tracker.buffer() else { return }
+        if await runGroupedHistory(command) { return }
+        if command.startsInsert {
+            sessionStart = buffer.text
+        } else if command.isChange {
+            sessionStart = nil
+        }
+        if command.isChange { redoSteps = nil }
         let actions = engine.execute(command, on: buffer)
         var i = 0
         while i < actions.count {
@@ -195,6 +204,30 @@ final class VimController {
             let ok = count > 1 ? await pressHistory(redo: action == .redo, count: count) : await perform(action)
             guard ok else { return }
             i += count
+        }
+    }
+
+    /// `u` after an insert session undoes the whole session; the next `Ctrl-r` redoes as many steps.
+    private func runGroupedHistory(_ command: VimCommand) async -> Bool {
+        switch command {
+        case .undo:
+            guard let start = sessionStart else { return false }
+            sessionStart = nil
+            let steps = await undoUntil(
+                target: start, read: { tracker.liveText }, undo: { _ = await pressHistory(redo: false, count: 1) })
+            redoSteps = steps
+            return true
+        case .redo:
+            guard let steps = redoSteps else { return false }
+            redoSteps = nil
+            _ = await pressHistory(redo: true, count: steps)
+            return true
+        case .counted(.undo, _), .counted(.redo, _):
+            sessionStart = nil
+            redoSteps = nil
+            return false
+        default:
+            return false
         }
     }
 

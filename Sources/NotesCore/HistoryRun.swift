@@ -42,3 +42,19 @@ public func pressHistory(count: Int, isEnabled: () -> Bool, press: () -> Void) -
     }
     return done
 }
+
+/// Undoes until `read` returns `target`, at most `limit` steps, stopping at once when a step changes nothing; returns the steps made.
+public func undoUntil<T: Equatable>(
+    isolation: isolated (any Actor)? = #isolation,
+    target: T, limit: Int = maxHistoryRun, read: () -> T, undo: () async -> Void
+) async -> Int {
+    var steps = 0
+    while steps < limit {
+        let before = read()
+        await undo()
+        steps += 1
+        let after = read()
+        if after == before || after == target { break }
+    }
+    return steps
+}
