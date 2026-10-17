@@ -262,9 +262,8 @@ let ctrlBracket = VimKey("[", control: true)
 @Test func pendingOperatorCancels() {
     #expect(run("a|b\ncd", "gx") == "a|b\ncd")
     #expect(run("a|b\ncd", "gxx") == "|a\ncd")
-    #expect(run("a|b\ncd", "dj") == "a|b\ncd")
-    #expect(run("a|b\ncd", "dw") == "a|b\ncd")
-    #expect(run("a|b\ncd", "ywp") == "a|b\ncd")
+    #expect(run("a|b\ncd", "dx") == "a|b\ncd")
+    #expect(run("a|b\ncd", "dxx") == "|a\ncd")
 
     var h = Harness("a|b\ncd")
     h.type("d")
@@ -298,4 +297,109 @@ let ctrlBracket = VimKey("[", control: true)
     #expect(h.press(VimKey("c", command: true)) == .passThrough)
     #expect(h.press(VimKey("z")) == .consume(.none))
     #expect(h.mode == .visual)
+}
+
+// AC1 (#71)
+@Test func countsRepeatCommands() {
+    #expect(run("|a\nb\nc\nd", "3j") == "a\nb\nc\n|d")
+    #expect(run("|abcdefg", "5x") == "|fg")
+    #expect(run("|a\nb\nc", "2dd") == "|c")
+    #expect(run("|a\nb\nc\nd", "2dd") == "|c\nd")
+    #expect(run("|ab", "x2p") == "ba|a")
+    #expect(run("|a\nb\nc", "yy2p") == "a\n|a\na\nb\nc")
+    #expect(run("|0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11", "10j") == "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n|10\n11")
+    #expect(run("  ab|c", "0") == "|  abc")
+    #expect(run("|a b c d e", "2d2w") == "|e")
+}
+
+// AC2 (#71)
+@Test func deleteWithMotions() {
+    #expect(run("|one two three", "dw") == "|two three")
+    #expect(run("one |two", "d$") == "one |")
+    #expect(run("one |two", "d0") == "|two")
+    #expect(run("one |two", "dw") == "one |")
+    #expect(run("a\n|b\nc", "dG") == "|a")
+    #expect(run("a\nb\n|c", "dgg") == "|")
+    #expect(run("a\n|b\nc", "dgg") == "|c")
+    #expect(run("a|b\ncd\ne", "dj") == "|e")
+    #expect(run("one |two", "db") == "|two")
+    #expect(run("|one two", "de") == "| two")
+}
+
+// AC3 (#71)
+@Test func changeWithMotions() {
+    var h = Harness("|one two")
+    h.type("cw")
+    #expect(h.marked == "| two")
+    #expect(h.mode == .insert)
+
+    h = Harness("a\n  b|c\nd")
+    h.type("cc")
+    #expect(h.marked == "a\n|\nd")
+    #expect(h.mode == .insert)
+}
+
+// AC4 (#71)
+@Test func yankWithMotions() {
+    #expect(run("|one two", "ywP") == "one| one two")
+    #expect(run("|one two", "ywp") == "oone| ne two")
+    #expect(run("one |two", "y$P") == "one tw|otwo")
+    #expect(run("|one two", "dwP") == "one| two")
+    #expect(run("|one\ntwo", "yjGp") == "one\ntwo\n|one\ntwo")
+}
+
+// AC5 (#71)
+@Test func oneKeyEdits() {
+    #expect(run("one |two", "D") == "one |")
+    var h = Harness("one |two")
+    h.type("C")
+    #expect(h.marked == "one |")
+    #expect(h.mode == .insert)
+    #expect(run("a|b", "xP") == "|ba")
+    #expect(run("ab|c", "rx") == "ab|x")
+    #expect(run("a|bc", "rx") == "a|xc")
+    #expect(run("a|bcd", "2rx") == "ax|xd")
+    #expect(run("a|b\n  cd", "J") == "ab| cd")
+    #expect(run("a|b\n\ncd", "J") == "a|b\ncd")
+    #expect(run("|aBc", "~") == "A|Bc")
+    #expect(run("|aBc", "3~") == "Ab|C")
+    #expect(run("a|1", "~") == "a|1")
+}
+
+// AC6 (#71)
+@Test func ctrlRIsRedo() {
+    var engine = VimEngine()
+    #expect(engine.feed(VimKey("r", control: true), at: 0) == .consume(.redo))
+    #expect(engine.execute(.redo, on: VimBuffer(text: "abc")) == [.redo])
+    #expect(engine.feed(VimKey("u"), at: 0) == .consume(.undo))
+}
+
+// AC7 (#71)
+@Test func escapeCancelsCountAndOperator() {
+    var h = Harness("a|bc\nd")
+    h.type("3")
+    h.press(.escape)
+    h.type("x")
+    #expect(h.marked == "a|c\nd")
+
+    h = Harness("a|bc\nd")
+    h.type("d")
+    h.press(.escape)
+    h.type("x")
+    #expect(h.marked == "a|c\nd")
+    #expect(h.mode == .normal)
+}
+
+// AC8 (#71)
+@Test func operatorsRefuseToCrossAnAttachmentLine() {
+    let table = "a\n\u{FFFC}\nb"
+    #expect(run("|" + table, "dj") == "|" + table)
+    #expect(run("|" + table, "2dd") == "|" + table)
+    #expect(run("|" + table, "dG") == "|" + table)
+    #expect(run("|" + table, "yjjp") != table)
+
+    var h = Harness("|" + table)
+    h.type("cj")
+    #expect(h.marked == "|" + table)
+    #expect(h.mode == .normal)
 }

@@ -190,9 +190,9 @@ final class VimController {
                 return await wait(applied)
             }
             return await paste(text, until: applied)
-        case .undo:
+        case .undo, .redo:
             let before = tracker.textLength
-            post(keyCode: 6, flags: .maskCommand)
+            post(keyCode: 6, flags: action == .redo ? [.maskCommand, .maskShift] : .maskCommand)
             // ponytail: an undo that keeps the length just waits out the timeout; compare text if that feels slow
             _ = await wait(attempts: 150) { $0 != before }
             return true
