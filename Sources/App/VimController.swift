@@ -164,9 +164,10 @@ final class VimController {
         draining = true
         Task {
             while !queue.isEmpty {
-                let (command, start) = queue.removeFirst()
-                await run(command)
-                recordLatency(since: start)
+                let batch = queue
+                queue = []
+                for command in mergeHistory(batch.map(\.command)) { await run(command) }
+                for item in batch { recordLatency(since: item.start) }
             }
             draining = false
             refresh(tracker.state(withCaretRect: false))
@@ -183,8 +184,17 @@ final class VimController {
 
     private func run(_ command: VimCommand) async {
         guard let buffer = tracker.buffer() else { return }
-        for action in engine.execute(command, on: buffer) {
-            guard await perform(action) else { return }
+        let actions = engine.execute(command, on: buffer)
+        var i = 0
+        while i < actions.count {
+            let action = actions[i]
+            var count = 1
+            if action == .undo || action == .redo {
+                while i + count < actions.count, actions[i + count] == action { count += 1 }
+            }
+            let ok = count > 1 ? await pressHistory(redo: action == .redo, count: count) : await perform(action)
+            guard ok else { return }
+            i += count
         }
     }
 
@@ -211,13 +221,20 @@ final class VimController {
             try? await Task.sleep(for: .milliseconds(30))
             return true
         case .undo, .redo:
-            let before = tracker.liveText
-            post(keyCode: 6, flags: action == .redo ? [.maskCommand, .maskShift] : .maskCommand)
-            _ = await waitForChange(
-                from: before, attempts: 150, read: { tracker.liveText },
-                sleep: { try? await Task.sleep(for: .milliseconds(2)) })
-            return true
+            return await pressHistory(redo: action == .redo, count: 1)
         }
+    }
+
+    private func pressHistory(redo: Bool, count: Int) async -> Bool {
+        guard let pid = NotesControl.pid, let item = NotesControl.historyItem(redo: redo, pid: pid) else { return false }
+        let before = tracker.liveText
+        let done = NotesCore.pressHistory(
+            count: count, isEnabled: { NotesControl.isEnabled(item) }, press: { NotesControl.press(item) })
+        guard done > 0 else { return false }
+        _ = await waitForChange(
+            from: before, attempts: 150, read: { tracker.liveText },
+            sleep: { try? await Task.sleep(for: .milliseconds(2)) })
+        return true
     }
 
     private func select(_ range: NSRange) -> Bool {

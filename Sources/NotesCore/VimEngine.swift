@@ -606,10 +606,10 @@ public struct VimEngine: Sendable {
             return joinLine(at: cur, buffer, t)
 
         case .redo:
-            return [.redo]
+            return Array(repeating: .redo, count: min(n, maxHistoryRun))
 
         case .undo:
-            return [.undo]
+            return Array(repeating: .undo, count: min(n, maxHistoryRun))
 
         case .insert(let insertion):
             return insert(insertion, at: cur, in: t, buffer: buffer)
