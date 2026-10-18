@@ -2,7 +2,7 @@
 
 How to build, test, sign and release tabieum. The [README](../README.md) has the short version.
 
-You need macOS 15 and either Xcode or only the Command Line Tools (`xcode-select --install`).
+You need macOS 15, Swift 6.2 or later, and either Xcode or only the Command Line Tools (`xcode-select --install`). Swift 6.2 is the floor because the pinned `swift-collections` needs it; CI selects Xcode 26.3 for the same reason.
 
 ```sh
 swift build          # debug build
