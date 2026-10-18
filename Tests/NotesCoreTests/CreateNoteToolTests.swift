@@ -32,7 +32,7 @@ func running(_ value: WriteSettings, writer: FakeWriter = FakeWriter(), confirme
     let url = shortSocketURL()
     let server = WriteSocketServer(path: url, service: service(value, writer: writer, confirmer: confirmer))
     try server.start()
-    return (server, WriteSocketClient(path: url, timeoutSeconds: 30), url.deletingLastPathComponent())
+    return (server, WriteSocketClient(path: url, timeoutSeconds: 5), url.deletingLastPathComponent())
 }
 
 @Test func createNoteIsListedWithItsSchemaAndAnnotations() throws {

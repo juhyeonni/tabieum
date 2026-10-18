@@ -230,7 +230,7 @@ private final class SocketClient {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
         }
         try #require(connected == 0)
-        var limit = timeval(tv_sec: 30, tv_usec: 0)
+        var limit = timeval(tv_sec: 5, tv_usec: 0)
         setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &limit, socklen_t(MemoryLayout<timeval>.size))
     }
 
