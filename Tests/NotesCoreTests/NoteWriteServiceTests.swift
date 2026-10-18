@@ -236,6 +236,11 @@ private final class SocketClient {
 
     deinit { close(descriptor) }
 
+    func sendWithoutWaiting(_ line: String) {
+        let bytes = Array((line + "\n").utf8)
+        write(descriptor, bytes, bytes.count)
+    }
+
     func send(_ line: String) -> String {
         let bytes = Array((line + "\n").utf8)
         write(descriptor, bytes, bytes.count)
@@ -256,6 +261,22 @@ private final class SocketClient {
     }
     let client = try SocketClient(path: url.path)
     #expect(try !parse(client.send("garbage")).ok)
+    #expect(try parse(client.send(createLine)).ok)
+}
+
+@Test func aClientThatHangsUpBeforeTheReplyDoesNotKillTheServer() async throws {
+    let url = shortSocketURL()
+    let server = WriteSocketServer(path: url, service: service(settings { $0.consent = .always }))
+    try server.start()
+    defer {
+        server.stop()
+        try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+    }
+    for _ in 0..<5 {
+        try SocketClient(path: url.path).sendWithoutWaiting(createLine)
+    }
+    try await Task.sleep(for: .milliseconds(300))
+    let client = try SocketClient(path: url.path)
     #expect(try parse(client.send(createLine)).ok)
 }
 
