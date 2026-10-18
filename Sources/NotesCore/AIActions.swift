@@ -3,6 +3,13 @@ import Foundation
 
 public enum AIAction: CaseIterable, Sendable {
     case rewrite, summarize, instruction, prompt
+
+    /// Free instructions start their answer with an `AIOutputKind` tag.
+    public var tagsOutput: Bool { self == .instruction || self == .prompt }
+}
+
+public enum AIOutputKind: Equatable, Sendable {
+    case note, reply
 }
 
 public enum AIPromptError: Error, Equatable {
@@ -49,10 +56,13 @@ public func availableAIActions(aiOn: Bool, hasSelection: Bool) -> [AIAction] {
 
 /// A free prompt sends the instruction, plus `context` when given; the other actions send the selection verbatim.
 public func aiMessages(for action: AIAction, selection: String, instruction: String = "", context: String = "") throws -> [ChatMessage] {
-    let system = ChatMessage(role: .system, content: """
-    You are a writing assistant inside Apple Notes. Reply with plain text only, with no Markdown, \
-    in the same language as the input. Reply with only the result: no preamble, no explanation.
-    """)
+    let base = "You are a writing assistant inside Apple Notes. Reply with plain text only, with no Markdown, in the same language as the input."
+    let rule = action.tagsOutput ? """
+    Start with a line that is exactly [note] or [reply], then the result on the next line. \
+    [note]: text meant for the note, such as a rewrite, summary, translation or new writing; give only that text, no preamble. \
+    [reply]: a message to the user, such as an explanation or an answer to a question.
+    """ : "Reply with only the result: no preamble, no explanation."
+    let system = ChatMessage(role: .system, content: base + " " + rule)
     let instruction = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
     if action == .prompt {
         let content = context.isEmpty ? instruction : "\(instruction)\n\nNote:\n\(context)"
@@ -82,6 +92,25 @@ public func strippingThinkBlock(_ text: String) -> String {
     let body = text.drop { $0.isWhitespace }
     guard body.hasPrefix("<think>"), let end = body.range(of: "</think>") else { return text }
     return String(body[end.upperBound...])
+}
+
+private let outputTags: [(String, AIOutputKind)] = [("[note]", .note), ("[reply]", .reply)]
+
+/// Splits a leading tag off a tagged result; without a known tag the result is note text.
+public func aiOutput(_ text: String) -> (kind: AIOutputKind, text: String) {
+    let text = strippingThinkBlock(text)
+    let body = text.drop { $0.isWhitespace }
+    for (tag, kind) in outputTags where body.lowercased().hasPrefix(tag) {
+        return (kind, String(body.dropFirst(tag.count).drop { $0.isWhitespace }))
+    }
+    return (.note, text)
+}
+
+/// What to show of a tagged result while it streams: a start that may still become a tag is held back.
+public func aiStreamingText(_ text: String) -> String {
+    let body = strippingThinkBlock(text).drop { $0.isWhitespace }.lowercased()
+    if outputTags.contains(where: { $0.0.hasPrefix(body) }) { return "" }
+    return aiOutput(text).text
 }
 
 public enum InsertDecision: Equatable, Sendable {
