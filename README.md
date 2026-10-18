@@ -145,7 +145,7 @@ Off by default. Agents can only do what you allow here.
 
 ## Build from source
 
-You need macOS 15 and either Xcode or only the Command Line Tools (`xcode-select --install`).
+You need macOS 15, Swift 6.2 or later, and either Xcode or only the Command Line Tools (`xcode-select --install`).
 
 ```sh
 swift build          # debug build
