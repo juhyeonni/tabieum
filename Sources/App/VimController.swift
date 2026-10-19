@@ -85,6 +85,9 @@ final class VimController {
                 self?.refreshCursor()
             }
         }.store(in: &cancellables)
+        toggles.$showVimLatency.sink { [weak self] on in
+            MainActor.assumeIsolated { self?.showsLatency = on }
+        }.store(in: &cancellables)
         toggles.$vimEnabled.sink { [weak self] on in
             MainActor.assumeIsolated { on ? self?.install() : self?.remove() }
         }.store(in: &cancellables)

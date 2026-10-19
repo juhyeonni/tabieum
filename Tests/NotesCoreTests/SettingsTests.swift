@@ -20,6 +20,19 @@ private func freshSuite() -> UserDefaults {
     #expect(reloaded.vimEnabled && reloaded.vimJKEnabled && !reloaded.ragEnabled && reloaded.aiEnabled)
 }
 
+@Test func debugTogglesAreOffByDefaultAndPersist() {
+    let defaults = freshSuite()
+    let toggles = FeatureToggles(defaults: defaults)
+    #expect(!toggles.showCaretOverlay && !toggles.showVimLatency)
+    toggles.showCaretOverlay = true
+    var reloaded = FeatureToggles(defaults: defaults)
+    #expect(reloaded.showCaretOverlay && !reloaded.showVimLatency)
+    toggles.showVimLatency = true
+    toggles.showCaretOverlay = false
+    reloaded = FeatureToggles(defaults: defaults)
+    #expect(!reloaded.showCaretOverlay && reloaded.showVimLatency)
+}
+
 @Test func embeddingModelDefaultsToAppleAndPersists() {
     let defaults = freshSuite()
     let toggles = FeatureToggles(defaults: defaults, e5Available: true)
