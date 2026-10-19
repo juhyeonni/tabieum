@@ -20,7 +20,7 @@ public struct MCPServer: Sendable {
             case .searchNotes: "Search the user's notes. Returns the best matches with a snippet."
             case .getNote: "Read one note as Markdown by its id."
             case .listBacklinks: "List the notes that link to one note, by its id."
-            case .createNote: "Create a note from a Markdown body. Notes uses the first line as the note's title, so start the body with a heading. It goes into the folder the owner chose and may need the owner's approval in the app."
+            case .createNote: "Create a note from a Markdown body. Notes uses the first line as the note's title, so start the body with a heading. It goes into the folder the owner chose and may need the owner's approval in the app. Returns the new note's id, title, folder and modified; pass id and modified to update_note or delete_note."
             case .deleteNote: "Move a note to Recently Deleted, where the owner can restore it. It may need the owner's approval in the app."
             case .updateNote: "Replace the whole body of an existing note with Markdown. Read the note with get_note first and pass its modified value as expected_modified; the edit is refused if the note changed since. It may need the owner's approval in the app."
             }
@@ -174,7 +174,7 @@ public struct MCPServer: Sendable {
         return nil
     }
 
-    private func createNote(_ arguments: [String: Any]) throws -> String {
+    private func createNote(_ arguments: [String: Any]) throws -> [String: Any] {
         var title: String?
         if let given = arguments["title"] {
             guard let text = given as? String else { throw ToolFailure(message: "title must be a string.") }
@@ -186,7 +186,12 @@ public struct MCPServer: Sendable {
         }
         var request: [String: Any] = ["action": "create", "html": NoteHTML.html(fromMarkdown: body)]
         request["title"] = title
-        return try askApp(request, success: "Created the note in the target folder.")
+        let answer = try askApp(request)
+        var created = answer.filter { ["id", "title", "folder", "modified"].contains($0.key) }
+        if created["id"] == nil {
+            created["note"] = "The note was created, but its id is not available yet. Find it with search_notes once the index has it."
+        }
+        return created
     }
 
     private func updateNote(_ arguments: [String: Any]) throws -> String {
@@ -195,17 +200,18 @@ public struct MCPServer: Sendable {
         guard let expected = arguments["expected_modified"] as? String, ISO8601DateFormatter().date(from: expected) != nil else {
             throw ToolFailure(message: "expected_modified must be the ISO 8601 modified value get_note returned.")
         }
-        return try askApp(["action": "edit", "id": id, "html": NoteHTML.html(fromMarkdown: body), "expected_modified": expected],
-                          success: "Replaced the body of the note.")
+        _ = try askApp(["action": "edit", "id": id, "html": NoteHTML.html(fromMarkdown: body), "expected_modified": expected])
+        return "Replaced the body of the note."
     }
 
     private func deleteNote(_ arguments: [String: Any]) throws -> String {
         guard let id = arguments["id"] as? String, !id.isEmpty else { throw ToolFailure(message: "id must be a non-empty string.") }
-        return try askApp(["action": "delete", "id": id], success: "Moved the note to Recently Deleted.")
+        _ = try askApp(["action": "delete", "id": id])
+        return "Moved the note to Recently Deleted."
     }
 
-    /// Sends one request to the running app and turns its reply into the tool's result or error.
-    private func askApp(_ request: [String: Any], success: String) throws -> String {
+    /// Sends one request to the running app and returns its answer, or throws the tool error its refusal becomes.
+    private func askApp(_ request: [String: Any]) throws -> [String: Any] {
         guard let writeChannel else { throw ToolFailure(message: "This server cannot reach \(serverName).") }
         let reply: String
         do {
@@ -221,7 +227,7 @@ public struct MCPServer: Sendable {
         guard answer["ok"] as? Bool == true else {
             throw ToolFailure(message: answer["error"] as? String ?? "\(serverName) refused the request.")
         }
-        return success
+        return answer
     }
 
     private func openIndex() throws -> SearchIndex {

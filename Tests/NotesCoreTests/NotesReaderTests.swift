@@ -218,4 +218,7 @@ struct TestError: Error {
     #expect(try reader.noteIdentifier(key: 100) == "N-100")
     #expect(try reader.noteIdentifier(key: 10) == nil)
     #expect(try reader.noteIdentifier(key: 9999) == nil)
+    #expect(try reader.noteIdentifier(coreDataID: "x-coredata://STORE/ICNote/p100") == "N-100")
+    #expect(try reader.noteIdentifier(coreDataID: "x-coredata://STORE/ICNote/p9999") == nil)
+    #expect(try reader.noteIdentifier(coreDataID: "not a handle") == nil)
 }

@@ -8,14 +8,17 @@ final class FakeWriter: NoteWriter, @unchecked Sendable {
     private var created: [(title: String?, html: String, target: NoteTarget)] = []
     var folderExists = true
     var failure: WriteFailure?
+    var createdID: String? = "N-NEW"
+    let createdModified = Date(timeIntervalSince1970: 1_800_000_000)
 
     var calls: [(title: String?, html: String, target: NoteTarget)] { lock.withLock { created } }
 
     func folderExists(_ target: NoteTarget) async throws -> Bool { folderExists }
 
-    func createNote(title: String?, html: String, in target: NoteTarget) async throws {
+    func createNote(title: String?, html: String, in target: NoteTarget) async throws -> CreatedNote {
         if let failure { throw failure }
         lock.withLock { created.append((title, html, target)) }
+        return CreatedNote(id: createdID, title: title ?? "Untitled", folder: target.folder, modified: createdModified)
     }
 
     var resolved: ResolvedNote?

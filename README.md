@@ -109,7 +109,7 @@ Note text that the tools return to an agent can contain instructions written by 
 Off by default. Agents can only do what you allow here.
 
 - **Turn it on:** Settings > Search & Agents > **Let AI agents write to Notes**, then choose a **target folder**. Agents cannot pick another folder or create one. Creating notes is allowed to begin with.
-- **`create_note`** takes a Markdown `body` and an optional `title`. Notes uses the first line of a note as its title, so start the body with a heading, or pass `title` to have one put in front.
+- **`create_note`** takes a Markdown `body` and an optional `title`. Notes uses the first line of a note as its title, so start the body with a heading, or pass `title` to have one put in front. It returns the new note's `id`, `title`, `folder` and `modified`, so an agent can edit or delete the note right away.
 - **`update_note`** replaces the whole body of an existing note. It needs the note's `id` and the `modified` value from `get_note`, and it is refused if the note changed since, or has attachments. You switch it on with **Allow edit**.
 - **`delete_note`** moves a note to Recently Deleted, where you can restore it. There is no permanent delete. You switch it on with **Allow delete**.
 - **Which notes:** **Edit and delete reach** decides which existing notes an agent can change: only the target folder (the default), any note, or only notes created by agents. Locked notes are never touched.

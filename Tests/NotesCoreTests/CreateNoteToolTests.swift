@@ -85,6 +85,26 @@ func running(_ value: WriteSettings, writer: FakeWriter = FakeWriter(), confirme
     #expect(!reply.isError)
     #expect(writer.calls.count == 1 && writer.calls.first?.title == "Plan")
     #expect(writer.calls.first?.html == "<h1>Hi</h1><ul><li>one</li></ul>")
+    let created = try #require(JSONSerialization.jsonObject(with: Data(reply.text.utf8)) as? [String: Any])
+    #expect(created["id"] as? String == "N-NEW" && created["title"] as? String == "Plan" && created["folder"] as? String == "Agents")
+    #expect(created["modified"] as? String == ISO8601DateFormatter().string(from: writer.createdModified))
+    #expect(created["note"] == nil)
+}
+
+@Test func aCreateBeforeTheDatabaseHasTheNoteStillSucceedsWithoutAnId() throws {
+    let writer = FakeWriter()
+    writer.createdID = nil
+    let live = try running(settings { $0.consent = .always }, writer: writer)
+    defer {
+        live.server.stop()
+        try? FileManager.default.removeItem(at: live.directory)
+    }
+    let reply = try call(mcp(settings { $0.consent = .always }, channel: live.client), #"{"title":"Plan","body":"b"}"#)
+    #expect(!reply.isError)
+    let created = try #require(JSONSerialization.jsonObject(with: Data(reply.text.utf8)) as? [String: Any])
+    #expect(created["id"] == nil && created["title"] as? String == "Plan")
+    #expect((created["note"] as? String)?.contains("not available yet") == true)
+    #expect(writer.calls.count == 1)
 }
 
 @Test func theAppsRefusalIsTheToolError() throws {

@@ -37,16 +37,29 @@ struct AppleScriptNotesWriter: NoteWriter {
         }
     }
 
-    func createNote(title: String?, html: String, in target: NoteTarget) async throws {
+    func createNote(title: String?, html: String, in target: NoteTarget) async throws -> CreatedNote {
         let heading = title?.replacing("&", with: "&amp;").replacing("<", with: "&lt;").replacing(">", with: "&gt;")
         let body = heading.map { "<div><h1>\($0)</h1></div>" + html } ?? html
-        let handle = try await Self.run("""
+        let created = try await Self.run("""
         tell application "Notes"
             set created to make new note at \(Self.folder(target)) with properties {body:\(Self.quoted(body))}
-            return id of created
+            return {id of created, name of created, modification date of created}
         end tell
-        """).text
+        """).items
+        guard created.count == 3 else { throw WriteFailure.failed("Notes did not report the new note.") }
+        let handle = created[0].text
         if !handle.isEmpty { CreatedNoteLog().record(handle) }
+        return CreatedNote(
+            id: await Self.identifier(of: handle), title: created[1].text, folder: target.folder, modified: created[2].date)
+    }
+
+    /// The database may lag behind Notes by a moment, so look a few times before giving up.
+    private static func identifier(of handle: String) async -> String? {
+        for attempt in 0..<5 {
+            if attempt > 0 { try? await Task.sleep(for: .milliseconds(200)) }
+            if let id = try? NotesReader().noteIdentifier(coreDataID: handle) { return id }
+        }
+        return nil
     }
 
     func resolveNote(identifier: String, scope: WriteScope, target: NoteTarget) async throws -> ResolvedNote? {
