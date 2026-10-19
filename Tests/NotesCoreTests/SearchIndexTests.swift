@@ -256,6 +256,30 @@ private func makeIndex(_ source: FakeNotes, url: URL = tempURL()) throws -> Sear
         #expect(NoteStoreWatcher.isRelevant("/x/NoteStore.sqlite-wal"))
         #expect(!NoteStoreWatcher.isRelevant("/x/NoteStore.sqlite-shm"))
     }
+
+    @Test func watcherSyncsOnLostOrDirectoryEventsAndIgnoresOtherFiles() {
+        let file = FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile)
+        func flag(_ value: Int) -> FSEventStreamEventFlags { FSEventStreamEventFlags(value) }
+        #expect(NoteStoreWatcher.shouldSync([("/x/NoteStore.sqlite-wal", file)]))
+        #expect(NoteStoreWatcher.shouldSync([("/x/Other", flag(kFSEventStreamEventFlagMustScanSubDirs))]))
+        #expect(NoteStoreWatcher.shouldSync([("/x/Other", flag(kFSEventStreamEventFlagUserDropped))]))
+        #expect(NoteStoreWatcher.shouldSync([("/x/Other", flag(kFSEventStreamEventFlagKernelDropped))]))
+        #expect(NoteStoreWatcher.shouldSync([("/x/Media", flag(kFSEventStreamEventFlagItemIsDir))]))
+        #expect(!NoteStoreWatcher.shouldSync([("/x/NoteStore.sqlite-shm", file), ("/x/Media/a.png", file)]))
+        #expect(!NoteStoreWatcher.shouldSync([]))
+    }
+
+    @Test func repeatingRunsTheActionWithoutAnyEventUntilCancelled() async {
+        let runs = Counter()
+        let task = repeating(every: .milliseconds(10)) { _ = await runs.next() }
+        for _ in 0..<200 where await runs.count < 3 { try? await Task.sleep(for: .milliseconds(10)) }
+        task.cancel()
+        await task.value
+        let seen = await runs.count
+        #expect(seen >= 3)
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(await runs.count == seen)
+    }
 }
 
 private actor Counter {
