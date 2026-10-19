@@ -32,10 +32,25 @@ public struct ResolvedNote: Equatable, Sendable {
     }
 }
 
+/// A note just made. `id` is the database identifier the read tools use, nil while the database does not have the note yet.
+public struct CreatedNote: Equatable, Sendable {
+    public let id: String?
+    public let title: String
+    public let folder: String
+    public let modified: Date
+
+    public init(id: String?, title: String, folder: String, modified: Date) {
+        self.id = id
+        self.title = title
+        self.folder = folder
+        self.modified = modified
+    }
+}
+
 /// Writes into Notes itself; the real one sends Apple events, so tests use a fake.
 public protocol NoteWriter: Sendable {
     func folderExists(_ target: NoteTarget) async throws -> Bool
-    func createNote(title: String?, html: String, in target: NoteTarget) async throws
+    func createNote(title: String?, html: String, in target: NoteTarget) async throws -> CreatedNote
     /// The note with this database identifier, only if it is inside `scope`, not locked and in Notes; else nil.
     func resolveNote(identifier: String, scope: WriteScope, target: NoteTarget) async throws -> ResolvedNote?
     func replaceBody(of note: ResolvedNote, with html: String) async throws
@@ -139,8 +154,7 @@ public struct NoteWriteService: Sendable {
                 return Self.reply(error: refusal)
             }
             let body = settings.marker ? html + "<div>Created by an AI agent through \(productName).</div>" : html
-            try await writer.createNote(title: title, html: body, in: target)
-            return Self.reply(ok: true)
+            return Self.reply(created: try await writer.createNote(title: title, html: body, in: target))
         } catch {
             return failureReply(error)
         }
@@ -239,6 +253,15 @@ public struct NoteWriteService: Sendable {
 
     static func reply(ok: Bool) -> String { json(["ok": ok]) }
     static func reply(error: String) -> String { json(["ok": false, "error": error]) }
+
+    static func reply(created note: CreatedNote) -> String {
+        var fields: [String: Any] = [
+            "ok": true, "title": note.title, "folder": note.folder,
+            "modified": ISO8601DateFormatter().string(from: note.modified),
+        ]
+        fields["id"] = note.id
+        return json(fields)
+    }
 
     private static func json(_ object: [String: Any]) -> String {
         let data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data("{}".utf8)
