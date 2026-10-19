@@ -20,9 +20,9 @@ public struct MCPServer: Sendable {
             case .searchNotes: "Search the user's notes. Returns the best matches with a snippet."
             case .getNote: "Read one note as Markdown by its id."
             case .listBacklinks: "List the notes that link to one note, by its id."
-            case .createNote: "Create a note from a Markdown body. Notes uses the first line as the note's title, so start the body with a heading. It goes into the folder the owner chose and may need the owner's approval in the app. Returns the new note's id, title, folder and modified; pass id and modified to update_note or delete_note."
+            case .createNote: "Create a note from a Markdown body. Notes uses the first line as the note's title, so start the body with a heading. Task items (`- [ ] a`, `- [x] a`) are written as `☐ a` and `☑ a` text lines, not as Notes checklists, which cannot be created from here. It goes into the folder the owner chose and may need the owner's approval in the app. Returns the new note's id, title, folder and modified; pass id and modified to update_note or delete_note."
             case .deleteNote: "Move a note to Recently Deleted, where the owner can restore it. It may need the owner's approval in the app."
-            case .updateNote: "Replace the whole body of an existing note with Markdown. Read the note with get_note first and pass its modified value as expected_modified; the edit is refused if the note changed since. It may need the owner's approval in the app."
+            case .updateNote: "Replace the whole body of an existing note with Markdown. Read the note with get_note first and pass its modified value as expected_modified; the edit is refused if the note changed since. Task items become `☐` / `☑` text lines, and a checklist made in Notes turns into plain text, because the whole body is rewritten. It may need the owner's approval in the app."
             }
         }
 
