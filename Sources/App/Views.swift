@@ -128,6 +128,15 @@ struct SettingsView: View {
             AISearchTab(toggles: toggles, embedding: embedding, install: install, setRAG: setRAG,
                         chooseModel: chooseModel, retryInstall: retryInstall)
                 .tabItem { Label("Search & Agents", systemImage: "magnifyingglass") }
+            SettingsPage {
+                Card {
+                    Toggle("Show Caret Overlay", isOn: $toggles.showCaretOverlay)
+                    Toggle("Show Vim Latency", isOn: $toggles.showVimLatency)
+                    Text("Options for developing and testing the app. Both are off by default.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+            }
+            .tabItem { Label("Debug", systemImage: "ladybug") }
         }
         .frame(minWidth: 760, minHeight: 320)
         .padding()

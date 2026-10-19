@@ -28,6 +28,10 @@ final class CaretOverlay {
 
     var isOn: Bool { subscription != nil }
 
+    func set(_ on: Bool) {
+        if on != isOn { toggle() }
+    }
+
     func toggle() {
         if let subscription {
             tracker.unsubscribe(subscription)

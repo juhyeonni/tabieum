@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import NotesCore
 import SwiftUI
 
@@ -31,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         toggles: toggles, title: "Copy Deeplink shortcut", id: 3, keyPath: \.copyLinkShortcut) { CopyNoteAction.link() }
     private var aiAssistant: AIAssistant?
     private var actionButton: ActionButton?
+    private var cancellables: Set<AnyCancellable> = []
 
     /// An accessory app has no menu bar, so the standard editing shortcuts need an Edit menu to reach a text field.
     private func installEditMenu() {
@@ -56,9 +58,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         item.button?.image = NSImage(systemSymbolName: "note.text", accessibilityDescription: name)
         let menu = NSMenu()
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
-        let overlayItem = menu.addItem(withTitle: "Show Caret Overlay", action: #selector(toggleCaretOverlay(_:)), keyEquivalent: "")
-        overlayItem.target = self
-        menu.addItem(withTitle: "Show Vim Latency", action: #selector(toggleVimLatency(_:)), keyEquivalent: "").target = self
         embeddingItem.isEnabled = false
         embeddingItem.isHidden = true
         menu.addItem(embeddingItem)
@@ -70,6 +69,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ai.config = AISettings.savedConfig()
         markdownShortcuts = MarkdownShortcuts(tracker: tracker, toggles: toggles)
         vim = VimController(tracker: tracker, toggles: toggles)
+        toggles.$showCaretOverlay.sink { [weak self] on in
+            MainActor.assumeIsolated { self?.caretOverlay.set(on) }
+        }.store(in: &cancellables)
         let slash = SlashCommands(tracker: tracker, toggles: toggles)
         slashCommands = slash
         aiAssistant = AIAssistant(
@@ -242,16 +244,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         Task { await UpdateAction.run() }
     }
 
-    @objc private func toggleVimLatency(_ sender: NSMenuItem) {
-        guard let vim else { return }
-        vim.showsLatency.toggle()
-        sender.state = vim.showsLatency ? .on : .off
-    }
-
-    @objc private func toggleCaretOverlay(_ sender: NSMenuItem) {
-        caretOverlay.toggle()
-        sender.state = caretOverlay.isOn ? .on : .off
-    }
 }
 
 if CommandLine.arguments.contains("--mcp") {
