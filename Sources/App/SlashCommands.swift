@@ -40,7 +40,7 @@ final class SlashCommands {
         default: nil
         }
         slashOffset = range.location
-        allItems = (templates ?? []) + SlashItem.builtIns + registry.items
+        allItems = (templates ?? []) + SlashItem.builtIns + registry.items + SlashItem.dates(now: Date())
         panel.show(items: allItems, message: message,
                    at: appKitRect(fromAX: caret, primaryScreenHeight: primary.frame.height))
         keyTap.start()
@@ -50,10 +50,10 @@ final class SlashCommands {
     private func update(_ offset: Int, _ current: TextSnapshot?) {
         guard tracker.isFocused else { return close() }
         guard let current else { return }
-        guard let query = slashQuery(text: current.text, slashOffset: offset, caret: current.caret),
-              slashMenuStaysOpen(allItems, query: query)
-        else { return close() }
-        panel.filter(query)
+        guard let query = slashQuery(text: current.text, slashOffset: offset, caret: current.caret) else { return close() }
+        let timed = SlashItem.timedDate(query: query, now: Date())
+        guard slashMenuStaysOpen(allItems, query: query) || timed != nil else { return close() }
+        panel.filter(query, extra: timed)
     }
 
     private func close() {
@@ -86,6 +86,10 @@ final class SlashCommands {
             tracker.setSelectedRange(range)
             NotesControl.postDelete(to: pid)
             NotesControl.paste(plain: strippingFirstLine(plainText: plain), html: strippingFirstLine(html: html), to: pid)
+        case let .insert(text):
+            tracker.setSelectedRange(range)
+            NotesControl.postDelete(to: pid)
+            NotesControl.paste(plain: text, to: pid)
         case let .command(index):
             tracker.setSelectedRange(range)
             NotesControl.postDelete(to: pid)
@@ -213,6 +217,7 @@ private func symbolName(for item: SlashItem) -> String {
     switch item.action {
     case .template: "doc.text"
     case .command: "sparkles"
+    case .insert: "calendar"
     case let .style(style):
         switch style {
         case .title: "textformat.size.larger"
@@ -328,9 +333,9 @@ final class SlashPanel: NSPanel, NSTableViewDataSource, NSTableViewDelegate {
         orderFrontRegardless()
     }
 
-    func filter(_ query: String) {
+    func filter(_ query: String, extra: SlashItem? = nil) {
         rows = note.map { [Row.message($0)] } ?? []
-        for group in groupSlashItems(filterSlashItems(all, query: query)) {
+        for group in groupSlashItems(filterSlashItems(all, query: query) + [extra].compactMap { $0 }) {
             rows.append(.header(group.section.rawValue))
             rows += group.items.map(Row.item)
         }

@@ -137,3 +137,47 @@ private func typeSlash(after before: String, then after: String = "") -> NSRange
     FeatureToggles(defaults: defaults).templateFolder = "Snippets"
     #expect(FeatureToggles(defaults: defaults).templateFolder == "Snippets")
 }
+
+// Date commands
+private func dateCalendar() -> Calendar {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Asia/Seoul")!
+    return calendar
+}
+
+private func day(_ y: Int, _ m: Int, _ d: Int, _ h: Int = 10, _ min: Int = 10) -> Date {
+    dateCalendar().date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: min))!
+}
+
+private func texts(_ now: Date) -> [String] {
+    SlashItem.dates(now: now, calendar: dateCalendar()).map { item in
+        guard case let .insert(text) = item.action else { return "" }
+        return text
+    }
+}
+
+@Test func dateCommandsGiveIsoDatesAndNow() {
+    #expect(SlashItem.dates(now: day(2026, 10, 20), calendar: dateCalendar()).map(\.title) == ["Today", "Tomorrow", "Yesterday", "Now"])
+    #expect(texts(day(2026, 10, 20)) == ["2026-10-20", "2026-10-21", "2026-10-19", "2026-10-20 10:10"])
+    #expect(texts(day(2026, 10, 20, 9, 5))[3] == "2026-10-20 09:05")
+}
+
+@Test func dateCommandsCrossMonthAndYear() {
+    #expect(texts(day(2026, 12, 31))[1] == "2027-01-01")
+    #expect(texts(day(2026, 3, 1))[2] == "2026-02-28")
+}
+
+@Test func timedDateQueries() {
+    let now = day(2026, 10, 20)
+    func text(_ query: String) -> String? {
+        guard case let .insert(text)? = SlashItem.timedDate(query: query, now: now, calendar: dateCalendar())?.action else { return nil }
+        return text
+    }
+    #expect(text("today1010") == "2026-10-20 10:10")
+    #expect(text("tomorrow0930") == "2026-10-21 09:30")
+    #expect(text("yesterday2359") == "2026-10-19 23:59")
+    #expect(SlashItem.timedDate(query: "today1010", now: now, calendar: dateCalendar())?.title == "Today 10:10")
+    for bad in ["today2460", "today1060", "today99", "today10100", "now1010", "todayabc", "today"] {
+        #expect(text(bad) == nil)
+    }
+}
