@@ -6,7 +6,7 @@ import NotesCore
 final class CaretOverlay {
     private let tracker: TextFocusTracker
     private var subscription: Int?
-    private lazy var window: NSWindow = {
+    lazy var window: NSWindow = {
         let window = NSWindow(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: true)
         window.isOpaque = false
         window.backgroundColor = .clear
