@@ -4,6 +4,21 @@ import NotesCore
 import SwiftUI
 
 @MainActor
+func makeStatusMenu(
+    name: String, embeddingItem: NSMenuItem, target: AnyObject, showSettings: Selector, checkForUpdates: Selector
+) -> NSMenu {
+    let menu = NSMenu()
+    menu.addItem(withTitle: "Settings…", action: showSettings, keyEquivalent: ",").target = target
+    embeddingItem.isEnabled = false
+    embeddingItem.isHidden = true
+    menu.addItem(embeddingItem)
+    menu.addItem(.separator())
+    menu.addItem(withTitle: "Check for Updates…", action: checkForUpdates, keyEquivalent: "").target = target
+    menu.addItem(withTitle: "Quit \(name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+    return menu
+}
+
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem?
     private let status = PermissionStatus()
@@ -56,15 +71,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let name = ProductInfo.main?.name ?? ProcessInfo.processInfo.processName
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.image = NSImage(systemSymbolName: "note.text", accessibilityDescription: name)
-        let menu = NSMenu()
-        menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
-        embeddingItem.isEnabled = false
-        embeddingItem.isHidden = true
-        menu.addItem(embeddingItem)
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Quit \(name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        item.menu = menu
+        item.menu = makeStatusMenu(
+            name: name, embeddingItem: embeddingItem, target: self,
+            showSettings: #selector(showSettings), checkForUpdates: #selector(checkForUpdates))
         statusItem = item
         ai.config = AISettings.savedConfig()
         markdownShortcuts = MarkdownShortcuts(tracker: tracker, toggles: toggles)
