@@ -54,7 +54,7 @@ final class SearchModel: ObservableObject {
     }
 }
 
-private final class FloatingPanel: NSPanel {
+final class FloatingPanel: NSPanel {
     var onResign: () -> Void = {}
     override var canBecomeKey: Bool { true }
     override func resignKey() {
@@ -67,7 +67,7 @@ private final class FloatingPanel: NSPanel {
 final class SearchPanel {
     private let indexURL: URL
     private let embedder: @MainActor () -> Embedder?
-    private lazy var panel: FloatingPanel = {
+    lazy var panel: FloatingPanel = {
         let panel = FloatingPanel(contentRect: NSRect(x: 0, y: 0, width: 640, height: 420),
                                   styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         panel.level = .floating
@@ -109,7 +109,7 @@ final class SearchPanel {
     }
 }
 
-private struct SearchView: View {
+struct SearchView: View {
     @ObservedObject var model: SearchModel
     let open: (SearchResult) -> Void
     let close: () -> Void

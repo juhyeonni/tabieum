@@ -153,7 +153,11 @@ scripts/test.sh      # run the tests
 scripts/bundle.sh    # build build/tabieum.app (release, ad-hoc signed)
 ```
 
-To see the Settings window without taking over your screen or keyboard focus, run `scripts/ui-capture.sh`. It saves a PNG of each tab in `build/ui-capture/` and needs Screen Recording permission for your terminal. The window is shown for a few seconds below your other windows.
+To see tabieum's windows without taking over your screen or keyboard focus, run `scripts/ui-capture.sh [target]`, where the target is `settings` (the default), `ai`, `search`, `backlinks`, `toast`, `action-button` or `all`. It saves PNGs in `build/ui-capture/` and needs Screen Recording permission for your terminal. The windows are shown for a few seconds below your other windows. The panels show fake data, and the Toast and the action button flash above other windows for a moment.
+
+```sh
+scripts/ui-capture.sh all    # every target
+```
 
 Always run the tests through `scripts/test.sh`. [docs/development.md](docs/development.md) covers the Command Line Tools setup, signing so that permissions survive rebuilds, and releases.
 

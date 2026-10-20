@@ -6,7 +6,7 @@ import NotesCore
 enum Toast {
     private static let label = NSTextField(labelWithString: "")
     private static var hide: DispatchWorkItem?
-    private static let panel: NSPanel = {
+    static let panel: NSPanel = {
         let panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         panel.isOpaque = false
         panel.backgroundColor = NSColor.black.withAlphaComponent(0.8)
@@ -50,7 +50,7 @@ final class ActionButton: NSObject {
     private let perform: (ActionMenuItem) -> Void
     private let button = NSButton()
     private var menuActions: [ActionMenuItem] = []
-    private lazy var panel: NSPanel = {
+    lazy var panel: NSPanel = {
         let panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         panel.isOpaque = false
         panel.backgroundColor = .clear

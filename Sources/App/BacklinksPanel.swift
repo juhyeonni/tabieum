@@ -35,7 +35,7 @@ final class BacklinksPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate
     private static let log = Logger(subsystem: "NotesExtension", category: "backlinks")
 
     private let indexURL: URL
-    private let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 320),
+    let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 320),
                                 styleMask: [.titled, .closable, .resizable, .utilityWindow, .nonactivatingPanel],
                                 backing: .buffered, defer: true)
     private let message = NSTextField(wrappingLabelWithString: "")
@@ -119,7 +119,7 @@ final class BacklinksPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate
         }
     }
 
-    private func show(_ backlinks: [Backlink], _ text: String) {
+    func show(_ backlinks: [Backlink], _ text: String) {
         rows = backlinks
         message.stringValue = text
         message.isHidden = text.isEmpty
