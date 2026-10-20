@@ -11,6 +11,8 @@ public struct MCPServer: Sendable {
         case searchNotes = "search_notes"
         case getNote = "get_note"
         case listBacklinks = "list_backlinks"
+        case listRecentNotes = "list_recent_notes"
+        case listFolders = "list_folders"
         case createNote = "create_note"
         case updateNote = "update_note"
         case deleteNote = "delete_note"
@@ -20,6 +22,8 @@ public struct MCPServer: Sendable {
             case .searchNotes: "Search the user's notes. Returns the best matches with a snippet."
             case .getNote: "Read one note as Markdown by its id."
             case .listBacklinks: "List the notes that link to one note, by its id."
+            case .listRecentNotes: "List the most recently changed notes, newest first, optionally in one folder. Pass next_cursor back as cursor for the next page."
+            case .listFolders: "List the folders with how many notes each holds."
             case .createNote: "Create a note from a Markdown body. Notes uses the first line as the note's title, so start the body with a heading. Task items (`- [ ] a`, `- [x] a`) are written as `☐ a` and `☑ a` text lines, not as Notes checklists, which cannot be created from here. It goes into the folder the owner chose and may need the owner's approval in the app. Returns the new note's id, title, folder and modified; pass id and modified to update_note or delete_note."
             case .deleteNote: "Move a note to Recently Deleted, where the owner can restore it. It may need the owner's approval in the app."
             case .updateNote: "Replace the whole body of an existing note with Markdown. Read the note with get_note first and pass its modified value as expected_modified; the edit is refused if the note changed since. Task items become `☐` / `☑` text lines, and a checklist made in Notes turns into plain text, because the whole body is rewritten. It may need the owner's approval in the app."
@@ -34,6 +38,13 @@ public struct MCPServer: Sendable {
                     "k": ["type": "integer", "minimum": 1, "maximum": 50, "default": 10]]]
             case .getNote, .listBacklinks, .deleteNote:
                 ["type": "object", "required": ["id"], "properties": ["id": ["type": "string"]]]
+            case .listRecentNotes:
+                ["type": "object", "properties": [
+                    "folder": ["type": "string", "description": "Exact folder name."],
+                    "limit": ["type": "integer", "minimum": 1, "maximum": 50, "default": 20],
+                    "cursor": ["type": "string", "description": "The next_cursor of the previous page."]]]
+            case .listFolders:
+                ["type": "object", "properties": [String: Any]()]
             case .createNote:
                 ["type": "object", "required": ["body"], "properties": [
                     "title": ["type": "string", "description": "Optional. Put in front of the body as a heading; leave it out when the body starts with its own title."],
@@ -50,7 +61,7 @@ public struct MCPServer: Sendable {
             switch self {
             case .createNote: ["readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false]
             case .updateNote, .deleteNote: ["readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false]
-            default: nil
+            default: ["readOnlyHint": true, "openWorldHint": false]
             }
         }
 
@@ -150,6 +161,8 @@ public struct MCPServer: Sendable {
             case .searchNotes: output = try search(openIndex(), arguments)
             case .getNote: output = try getNote(openIndex(), arguments)
             case .listBacklinks: output = try listBacklinks(openIndex(), arguments)
+            case .listRecentNotes: output = try listRecentNotes(openIndex(), arguments)
+            case .listFolders: output = try listFolders(openIndex())
             case .createNote: output = try createNote(arguments)
             case .updateNote: output = try updateNote(arguments)
             case .deleteNote: output = try deleteNote(arguments)
@@ -268,6 +281,54 @@ public struct MCPServer: Sendable {
             throw ToolFailure(message: "No note with that id.")
         }
         return try index.backlinks(to: id).map { ["id": $0.id, "title": $0.title, "folder": $0.folder] }
+    }
+
+    private func listRecentNotes(_ index: SearchIndex, _ arguments: [String: Any]) throws -> [String: Any] {
+        let limit = min(max((arguments["limit"] as? NSNumber)?.intValue ?? 20, 1), 50)
+        var conditions: [String] = []
+        var params: [SQLiteValue] = []
+        if let folder = arguments["folder"] as? String {
+            params.append(.text(folder))
+            conditions.append("f.folder = ?\(params.count)")
+        }
+        if let cursor = arguments["cursor"] {
+            guard let (modified, id) = Self.decodeCursor(cursor as? String) else { throw ToolFailure(message: "cursor is not valid.") }
+            params += [.real(modified), .text(id)]
+            conditions.append("(n.modified < ?\(params.count - 1) OR (n.modified = ?\(params.count - 1) AND n.id < ?\(params.count)))")
+        }
+        let filter = conditions.isEmpty ? "" : "WHERE " + conditions.joined(separator: " AND ")
+        var rows = try index.db.rows("""
+            SELECT n.id, f.title, f.folder, n.modified FROM notes n JOIN notes_fts f ON f.rowid = n.rowid
+            \(filter) ORDER BY n.modified DESC, n.id DESC LIMIT \(limit + 1)
+            """, params) {
+            (id: SQLiteConnection.text($0, 0), title: SQLiteConnection.text($0, 1), folder: SQLiteConnection.text($0, 2),
+             modified: sqlite3_column_double($0, 3))
+        }
+        let more = rows.count > limit
+        rows = Array(rows.prefix(limit))
+        var output: [String: Any] = ["notes": rows.map {
+            ["id": $0.id, "title": $0.title, "folder": $0.folder,
+             "modified": ISO8601DateFormatter().string(from: Date(timeIntervalSinceReferenceDate: $0.modified))]
+        }]
+        if more, let last = rows.last { output["next_cursor"] = Self.encodeCursor(last.modified, last.id) }
+        return output
+    }
+
+    private func listFolders(_ index: SearchIndex) throws -> [[String: Any]] {
+        try index.db.rows("""
+            SELECT f.folder, count(*) FROM notes n JOIN notes_fts f ON f.rowid = n.rowid GROUP BY f.folder ORDER BY f.folder
+            """) { ["folder": SQLiteConnection.text($0, 0), "count": Int(sqlite3_column_int64($0, 1))] }
+    }
+
+    private static func encodeCursor(_ modified: Double, _ id: String) -> String {
+        Data("\(modified)|\(id)".utf8).base64EncodedString()
+    }
+
+    private static func decodeCursor(_ cursor: String?) -> (Double, String)? {
+        guard let cursor, let data = Data(base64Encoded: cursor) else { return nil }
+        let parts = String(decoding: data, as: UTF8.self).split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2, let modified = Double(parts[0]) else { return nil }
+        return (modified, String(parts[1]))
     }
 
     private static func fields(_ note: SearchResult) -> [String: Any] {
