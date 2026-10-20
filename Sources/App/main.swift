@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private lazy var caretOverlay = CaretOverlay(tracker: tracker)
     private var markdownShortcuts: MarkdownShortcuts?
     private var vim: VimController?
+    private var formatToolbar: FormatToolbar?
     private var slashCommands: SlashCommands?
     private var indexService: IndexService?
     private let embeddingItem = NSMenuItem()
@@ -82,6 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ai.config = AISettings.savedConfig()
         markdownShortcuts = MarkdownShortcuts(tracker: tracker, toggles: toggles)
         vim = VimController(tracker: tracker, toggles: toggles)
+        formatToolbar = FormatToolbar(tracker: tracker, toggles: toggles)
         toggles.$showCaretOverlay.sink { [weak self] on in
             MainActor.assumeIsolated { self?.caretOverlay.set(on) }
         }.store(in: &cancellables)
