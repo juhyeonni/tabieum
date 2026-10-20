@@ -113,6 +113,11 @@ struct SettingsView: View {
                     .disabled(!toggles.vimEnabled)
                 }
                 Card {
+                    Toggle("Show a format toolbar when text is selected", isOn: $toggles.formatToolbarEnabled)
+                    Text("A small toolbar next to the selection in Notes: bold, italic, underline, strikethrough, title, bulleted list and checklist.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                Card {
                     Text("Markdown shortcuts").bold()
                     ForEach(MarkdownStyle.allCases, id: \.self) { style in
                         Toggle("\(style.marker.trimmingCharacters(in: .whitespacesAndNewlines))  \(style.displayName)",

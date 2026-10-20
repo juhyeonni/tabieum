@@ -15,6 +15,7 @@ The app lives in the menu bar and has no Dock icon.
 ## Options you turn on
 
 - **Vim mode:** Normal, Insert, Visual and Visual Line modes, operators and motions with counts, text objects, `/` search, `.` repeat, macros and marks, undo and redo. The cursor is a block in Normal and Visual mode and a bar in Insert mode, or always a bar. Inside tables and other blocks it cannot read reliably, Vim keys are limited.
+- **Format toolbar:** turn it on in Settings > Editor and a small toolbar appears next to the text you select in Notes, with bold, italic, underline, strikethrough, title, bulleted list and checklist. A click applies the style through Notes' own Format menu, so undo works. It does not appear where the selection's position cannot be read, such as in tables.
 - **Search by meaning:** turn on semantic search in Settings > Search & Agents and the index also holds a vector for each part of a note. You can use macOS's built-in model or download the tabieum-e5-small-coreml model (see [Optional download](../README.md#optional-download)). A second switch there, "Also search by meaning in the search panel", adds the notes found only by meaning to the search panel. They are marked "Similar in meaning", come after the notes that match your words, and at most 20 are listed. A match by meaning is a hint and not a guarantee: the model gives no score that tells a real match from a weak one.
 - **AI helpers:** rewrite, summarize, ask about the note, and "Ask my notes" across your notes. You bring the server, the model and the key.
 
