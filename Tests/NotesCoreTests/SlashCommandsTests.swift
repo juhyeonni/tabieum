@@ -137,3 +137,35 @@ private func typeSlash(after before: String, then after: String = "") -> NSRange
     FeatureToggles(defaults: defaults).templateFolder = "Snippets"
     #expect(FeatureToggles(defaults: defaults).templateFolder == "Snippets")
 }
+
+// Issue #178
+private func tableItems(_ query: String) -> [SlashItem] {
+    filterSlashItems(SlashItem.builtIns + [.table], query: query)
+}
+
+@Test func tableOffersADefaultThreeByThree() {
+    #expect(tableItems("table") == [.table])
+    #expect(SlashItem.table.action == .table(columns: 3, rows: 3))
+}
+
+@Test func tableSizeSetsColumnsByRows() {
+    #expect(tableItems("table4x2").map(\.action) == [.table(columns: 4, rows: 2)])
+    #expect(tableItems("table1x1").map(\.action) == [.table(columns: 1, rows: 1)])
+    #expect(tableItems("table10x20").map(\.action) == [.table(columns: 10, rows: 20)])
+}
+
+@Test func invalidTableSizesAddNoSizedItem() {
+    for query in ["table0x3", "table11x3", "table3x21", "table3x", "table3", "tablexyz"] {
+        #expect(tableSize(query: query) == nil)
+        #expect(!tableItems(query).contains { $0.title.contains("×") })
+    }
+}
+
+@Test func tableHTMLIsOnlyTheRequestedCells() {
+    let html = tableHTML(columns: 4, rows: 2)
+    #expect(html.hasPrefix("<table>") && html.hasSuffix("</table>"))
+    #expect(html.components(separatedBy: "<tr>").count - 1 == 2)
+    #expect(html.components(separatedBy: "<td></td>").count - 1 == 8)
+    let rest = ["<table>", "</table>", "<tr>", "</tr>", "<td></td>"].reduce(html) { $0.replacing($1, with: "") }
+    #expect(rest.isEmpty)
+}

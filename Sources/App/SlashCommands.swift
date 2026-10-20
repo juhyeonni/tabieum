@@ -40,7 +40,7 @@ final class SlashCommands {
         default: nil
         }
         slashOffset = range.location
-        allItems = (templates ?? []) + SlashItem.builtIns + registry.items
+        allItems = (templates ?? []) + SlashItem.builtIns + [.table] + registry.items
         panel.show(items: allItems, message: message,
                    at: appKitRect(fromAX: caret, primaryScreenHeight: primary.frame.height))
         keyTap.start()
@@ -86,6 +86,10 @@ final class SlashCommands {
             tracker.setSelectedRange(range)
             NotesControl.postDelete(to: pid)
             NotesControl.paste(plain: strippingFirstLine(plainText: plain), html: strippingFirstLine(html: html), to: pid)
+        case let .table(columns, rows):
+            tracker.setSelectedRange(range)
+            NotesControl.postDelete(to: pid)
+            NotesControl.paste(plain: tablePlainText(columns: columns, rows: rows), html: tableHTML(columns: columns, rows: rows), to: pid)
         case let .command(index):
             tracker.setSelectedRange(range)
             NotesControl.postDelete(to: pid)
@@ -213,6 +217,7 @@ private func symbolName(for item: SlashItem) -> String {
     switch item.action {
     case .template: "doc.text"
     case .command: "sparkles"
+    case .table: "tablecells"
     case let .style(style):
         switch style {
         case .title: "textformat.size.larger"
