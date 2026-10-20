@@ -83,6 +83,9 @@ struct SettingsView: View {
     let embedding: EmbeddingState
     let install: ModelInstall
     let shortcuts: [ShortcutController]
+    let productName: String
+    let version: String
+    let checkForUpdates: () -> Void
     let showOnboarding: () -> Void
     let setRAG: (Bool) -> Void
     let chooseModel: (EmbeddingModel) -> Void
@@ -137,6 +140,14 @@ struct SettingsView: View {
                 }
             }
             .tabItem { Label("Debug", systemImage: "ladybug") }
+            SettingsPage {
+                Card {
+                    Text(productName).bold()
+                    Text("Version \(version)")
+                    Button("Check for Updates…", action: checkForUpdates)
+                }
+            }
+            .tabItem { Label("About", systemImage: "info.circle") }
         }
         .frame(minWidth: 760, minHeight: 320)
         .padding()

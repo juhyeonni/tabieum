@@ -35,6 +35,7 @@ struct UICaptureTests {
         return SettingsView(
             status: PermissionStatus(), toggles: toggles, ai: AIFeature(toggles: toggles, factory: AISettings.makeProvider),
             embedding: EmbeddingState(), install: ModelInstall(), shortcuts: [],
+            productName: "tabieum", version: "1.2.3", checkForUpdates: {},
             showOnboarding: {}, setRAG: { _ in }, chooseModel: { _ in }, retryInstall: {})
     }
 

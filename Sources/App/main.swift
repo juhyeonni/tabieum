@@ -5,7 +5,7 @@ import SwiftUI
 
 @MainActor
 func makeStatusMenu(
-    name: String, embeddingItem: NSMenuItem, target: AnyObject, showSettings: Selector, checkForUpdates: Selector
+    name: String, version: String, embeddingItem: NSMenuItem, target: AnyObject, showSettings: Selector, checkForUpdates: Selector
 ) -> NSMenu {
     let menu = NSMenu()
     menu.addItem(withTitle: "Settings…", action: showSettings, keyEquivalent: ",").target = target
@@ -14,6 +14,7 @@ func makeStatusMenu(
     menu.addItem(embeddingItem)
     menu.addItem(.separator())
     menu.addItem(withTitle: "Check for Updates…", action: checkForUpdates, keyEquivalent: "").target = target
+    menu.addItem(withTitle: "\(name) \(version)", action: nil, keyEquivalent: "").isEnabled = false
     menu.addItem(withTitle: "Quit \(name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
     return menu
 }
@@ -49,6 +50,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var actionButton: ActionButton?
     private var cancellables: Set<AnyCancellable> = []
 
+    private var productName: String { ProductInfo.main?.name ?? ProcessInfo.processInfo.processName }
+    private var productVersion: String { ProductInfo.main?.version ?? "0" }
+
     /// An accessory app has no menu bar, so the standard editing shortcuts need an Edit menu to reach a text field.
     private func installEditMenu() {
         let edit = NSMenu(title: "Edit")
@@ -68,11 +72,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installEditMenu()
-        let name = ProductInfo.main?.name ?? ProcessInfo.processInfo.processName
+        let name = productName
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.image = NSImage(systemSymbolName: "note.text", accessibilityDescription: name)
         item.menu = makeStatusMenu(
-            name: name, embeddingItem: embeddingItem, target: self,
+            name: name, version: productVersion, embeddingItem: embeddingItem, target: self,
             showSettings: #selector(showSettings), checkForUpdates: #selector(checkForUpdates))
         statusItem = item
         ai.config = AISettings.savedConfig()
@@ -142,6 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let window = settingsWindow ?? makeWindow(title: "Settings", view: SettingsView(
             status: status, toggles: toggles, ai: ai, embedding: embedding, install: modelInstall,
             shortcuts: [searchShortcut, copyMarkdownShortcut, copyLinkShortcut],
+            productName: productName, version: productVersion, checkForUpdates: { [weak self] in self?.checkForUpdates() },
             showOnboarding: { [weak self] in self?.showOnboarding() }, setRAG: { [weak self] in self?.setRAG($0) },
             chooseModel: { [weak self] in self?.chooseModel($0) }, retryInstall: { [weak self] in self?.installModel() }))
         window.styleMask.insert(.resizable)
@@ -259,7 +264,7 @@ if CommandLine.arguments.contains("--mcp") {
     let info = ProductInfo.main
     MCPServer(
         serverName: info?.name ?? "tabieum",
-        version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0",
+        version: info?.version ?? "0",
         indexURL: SearchIndex.defaultURL(bundleIdentifier: info?.bundleIdentifier ?? "dev.juhyeonni.tabieum"),
         isEnabled: { UserDefaults.standard.bool(forKey: "mcpEnabled") },
         ragEnabled: { UserDefaults.standard.bool(forKey: "ragEnabled") },
