@@ -1,6 +1,6 @@
 #!/bin/sh
 # Saves PNGs of tabieum's windows without taking focus. Needs Screen Recording permission.
-# Usage: scripts/ui-capture.sh [settings|ai|search|backlinks|toast|action-button|all] [output-dir] [tab-name]
+# Usage: scripts/ui-capture.sh [settings|ai|search|backlinks|toast|action-button|overlays|all] [output-dir] [tab-name]
 # The tab name applies to settings only.
 set -eu
 cd "$(dirname "$0")/.."
@@ -14,7 +14,8 @@ search) filter=captureSearchPanel prefixes=search ;;
 backlinks) filter=captureBacklinksPanel prefixes=backlinks ;;
 toast) filter=captureToast prefixes=toast ;;
 action-button) filter=captureActionButton prefixes=action-button ;;
-all) filter='UICaptureTests|PanelCaptureTests' prefixes='settings ai search backlinks toast action-button' ;;
+overlays) filter=captureOverlays prefixes=overlays ;;
+all) filter='UICaptureTests|PanelCaptureTests|OverlayCaptureTests' prefixes='settings ai search backlinks toast action-button overlays' ;;
 *)
     echo "unknown target: $target" >&2
     exit 2
@@ -42,4 +43,7 @@ for prefix in $prefixes; do
     done
 done
 [ -n "$found" ] || { echo "no PNGs were written" >&2; exit 1; }
+case "$target" in
+overlays | all) echo "overlays are drawn on a stand-in editor, not Notes: the Accessibility quirks of Notes itself are not covered" >&2 ;;
+esac
 [ "$before" = "$after" ] || echo "warning: the front app changed from $before to $after" >&2

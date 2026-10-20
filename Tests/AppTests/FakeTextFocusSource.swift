@@ -8,18 +8,25 @@ final class FakeTextFocusSource: TextFocusSource {
     let isTrusted = true
     let frontmostBundleID: String? = TextFocusTracker.notesBundleID
     let focusedRole: String? = TextFocusTracker.editorRole
-    var text: String? = ""
+    let text: String?
+    let frame: CGRect?
     var textLength: Int? { text.map { ($0 as NSString).length } }
-    var frame: CGRect?
-    private var selection = NSRange(location: 0, length: 0)
+    private var selection: NSRange
+    private let boundsFor: (NSRange) -> CGRect?
 
-    init(frame: CGRect) {
+    init(
+        frame: CGRect, text: String = "", selection: NSRange = NSRange(location: 0, length: 0),
+        boundsFor: @escaping (NSRange) -> CGRect? = { _ in nil }
+    ) {
         self.frame = frame
+        self.text = text
+        self.selection = selection
+        self.boundsFor = boundsFor
     }
 
     func selectedRange() -> NSRange? { selection }
     func setSelectedRange(_ range: NSRange) { selection = range }
-    func bounds(for range: NSRange) -> CGRect? { nil }
+    func bounds(for range: NSRange) -> CGRect? { boundsFor(range) }
     func startObserving(_ onChange: @escaping () -> Void) {}
     func stopObserving() {}
 }

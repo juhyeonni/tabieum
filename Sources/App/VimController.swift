@@ -43,14 +43,14 @@ final class VimController {
     private static let transientType = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
 
     private let tracker: TextFocusTracker
-    private let indicator = ModeIndicator()
+    let indicator = ModeIndicator()
     private let searchInput = SearchInput()
     private let shading = SearchShading()
-    private let cursorBlock = SearchShading(fill: .labelColor, currentAlpha: 0.35)
+    let cursorBlock = SearchShading(fill: .labelColor, currentAlpha: 0.35)
     private var cursorSetting = VimCursorSetting.modeBased
     private var scrollMonitor: Any?
     private var editorFrame: CGRect?
-    private var engine = VimEngine()
+    var engine = VimEngine()
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var subscription: Int?
@@ -69,7 +69,7 @@ final class VimController {
     private var draining = false
     private var history = HistoryGroups()
     private var latencies = LatencyWindow()
-    private var latencyText: String?
+    var latencyText: String?
     var showsLatency = false {
         didSet { if !showsLatency { latencyText = nil } }
     }
@@ -322,8 +322,12 @@ final class VimController {
 
     // MARK: - focus
 
-    private func refresh(_ state: TextFocusState) {
+    func refresh(_ state: TextFocusState) {
         guard tap != nil else { return }
+        render(state)
+    }
+
+    func render(_ state: TextFocusState) {
         let buffer = tracker.buffer()
         if buffer?.caretLine != mismatchLine { mismatchLine = nil }
         active = buffer != nil && mismatchLine == nil
@@ -423,7 +427,7 @@ final class SearchShading {
         view.currentAlpha = currentAlpha
     }
 
-    private lazy var window: NSWindow = {
+    lazy var window: NSWindow = {
         let window = NSWindow(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: true)
         window.isOpaque = false
         window.backgroundColor = .clear
@@ -453,7 +457,7 @@ final class SearchShading {
 @MainActor
 final class ModeIndicator {
     private let label = NSTextField(labelWithString: "")
-    private lazy var panel: NSPanel = {
+    lazy var panel: NSPanel = {
         let panel = NSPanel(
             contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         panel.isOpaque = false
