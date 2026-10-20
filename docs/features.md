@@ -10,7 +10,7 @@ The app lives in the menu bar and has no Dock icon.
 - **Backlinks:** the notes that link to the one you have open.
 - **Copy as Markdown / Copy Deeplink:** ⌃⌥⌘M and ⌃⌥⌘L, or the small button at the bottom of the editor.
 - **Markdown shortcuts:** type Markdown while you write and the matching Notes style is applied. Each one can be turned off in Settings > Editor.
-- **Templates and slash commands:** type `/` in a note to insert a template from a folder you choose, apply a style or run a command.
+- **Templates and slash commands:** type `/` in a note to insert a template from a folder you choose, apply a style or run a command. `/today`, `/tomorrow`, `/yesterday` and `/now` insert an ISO date (`2026-10-20`, or `2026-10-20 10:10` for `/now`); add four digits for a time, as in `/tomorrow0930`.
 
 ## Options you turn on
 

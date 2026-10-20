@@ -32,6 +32,8 @@ public struct SlashItem: Equatable, Sendable {
         case style(NotesStyle)
         /// An index into `SlashCommandRegistry.commands`.
         case command(Int)
+        /// Text to paste in place of the `/query`.
+        case insert(String)
     }
 
     public var title: String
@@ -46,7 +48,7 @@ public struct SlashItem: Equatable, Sendable {
         switch action {
         case .template: .templates
         case .style: .styles
-        case .command: .commands
+        case .command, .insert: .commands
         }
     }
 
@@ -57,6 +59,41 @@ public struct SlashItem: Equatable, Sendable {
     }
 
     public static let builtIns = NotesStyle.allCases.map { SlashItem(title: $0.displayName, action: .style($0)) }
+}
+
+private func isoText(daysFrom offset: Int, time: String?, now: Date, calendar: Calendar) -> String {
+    let day = calendar.date(byAdding: .day, value: offset, to: now) ?? now
+    let parts = calendar.dateComponents([.year, .month, .day], from: day)
+    let date = String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    return time.map { "\(date) \($0)" } ?? date
+}
+
+private let dateWords: [(word: String, title: String, offset: Int)] = [
+    ("today", "Today", 0), ("tomorrow", "Tomorrow", 1), ("yesterday", "Yesterday", -1),
+]
+
+extension SlashItem {
+    /// Today, Tomorrow, Yesterday as `YYYY-MM-DD` and Now as `YYYY-MM-DD HH:mm`, in `calendar`'s time zone.
+    public static func dates(now: Date, calendar: Calendar = .current) -> [SlashItem] {
+        let days = dateWords.map {
+            SlashItem(title: $0.title, action: .insert(isoText(daysFrom: $0.offset, time: nil, now: now, calendar: calendar)))
+        }
+        let time = String(format: "%02d:%02d", calendar.component(.hour, from: now), calendar.component(.minute, from: now))
+        return days + [SlashItem(title: "Now", action: .insert(isoText(daysFrom: 0, time: time, now: now, calendar: calendar)))]
+    }
+
+    /// The one item for a query like `today1010`: a date word and exactly four digits `HHmm`; nil for any other shape.
+    public static func timedDate(query: String, now: Date, calendar: Calendar = .current) -> SlashItem? {
+        let query = query.lowercased()
+        guard let entry = dateWords.first(where: { query.hasPrefix($0.word) }) else { return nil }
+        let digits = query.dropFirst(entry.word.count)
+        guard digits.count == 4, digits.allSatisfy({ $0.isASCII && $0.isNumber }),
+              let hour = Int(digits.prefix(2)), let minute = Int(digits.suffix(2)), hour < 24, minute < 60
+        else { return nil }
+        let time = String(format: "%02d:%02d", hour, minute)
+        return SlashItem(title: "\(entry.title) \(time)",
+                         action: .insert(isoText(daysFrom: entry.offset, time: time, now: now, calendar: calendar)))
+    }
 }
 
 /// Case-insensitive, canonically equivalent substring match on the title; prefix matches first, otherwise source order.
