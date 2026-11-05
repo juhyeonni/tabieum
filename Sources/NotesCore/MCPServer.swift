@@ -270,7 +270,7 @@ public struct MCPServer: Sendable {
         return try index.backlinks(to: id).map { ["id": $0.id, "title": $0.title, "folder": $0.folder] }
     }
 
-    private static func fields(_ note: SearchResult) -> [String: Any] {
+    static func fields(_ note: SearchResult) -> [String: Any] {
         ["id": note.id, "title": note.title, "folder": note.folder,
          "modified": ISO8601DateFormatter().string(from: note.modified), "snippet": note.snippet]
     }
@@ -288,7 +288,7 @@ public struct MCPServer: Sendable {
         Self.json(["jsonrpc": "2.0", "id": id ?? NSNull(), "error": ["code": code, "message": message]])
     }
 
-    private static func json(_ value: Any) -> String {
+    static func json(_ value: Any) -> String {
         let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .withoutEscapingSlashes])
         return data.map { String(decoding: $0, as: UTF8.self) } ?? "null"
     }

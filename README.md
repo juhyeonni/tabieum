@@ -104,6 +104,23 @@ If you moved the app out of Applications, use its real path. If Claude Desktop d
 
 Note text that the tools return to an agent can contain instructions written by someone else. Treat it as untrusted input. Reading never changes your notes, and writing is off until you turn it on.
 
+### Searching from the command line
+
+`tabieum search <words> [--limit n] [--json]` prints the matching notes as JSON and exits, with no app window. It runs word search over the same index, read-only, and does not need the app to be running or Full Disk Access. Results are as fresh as the app's last sync. `--limit` defaults to 10 and is clamped to 1 through 50. `--json` is accepted and changes nothing: JSON is the only format.
+
+```
+$ /Applications/tabieum.app/Contents/MacOS/tabieum search budget --json
+{"results":[{"folder":"Work","id":"...","modified":"2026-11-06T09:00:00Z","snippet":"...","title":"Budget"}]}
+```
+
+Each result has the same fields as the MCP `search_notes` tool. Errors are `{"error":"..."}` on standard output.
+
+| Exit code | Meaning |
+|---|---|
+| 0 | Success, also with no matches (`{"results":[]}`) |
+| 1 | The search index is missing or unreadable |
+| 2 | Usage error, such as no words |
+
 ### Letting agents write to Notes
 
 Off by default. Agents can only do what you allow here.
