@@ -8,7 +8,7 @@ tabieum is a separate app that works next to Notes; it is not a plug-in for it. 
 
 ## What you get
 
-- **Always on:** search by keyword with a global shortcut (default ⌃⌥⌘N), backlinks, copy as Markdown or as a deeplink, Markdown shortcuts, templates and `/` commands.
+- **Always on:** search by keyword with a global shortcut (default ⌃⌥⌘N), backlinks, copy as Markdown or as a deeplink, today's note (⌃⌥⌘D), Markdown shortcuts, templates and `/` commands.
 - **Options you turn on:** a Vim mode, search by meaning, and AI helpers.
 - **For agents:** an MCP server, so Claude Desktop, Claude Code and other clients can search your notes.
 
@@ -44,7 +44,7 @@ tabieum asks for three permissions in System Settings > Privacy & Security. It s
 |---|---|---|
 | Accessibility | Reads the Notes window and cursor so keyboard features work inside Notes: Vim mode, Markdown shortcuts, the `/` menu and the button at the bottom of the editor. | Those features do not work. The search shortcut and MCP still do. |
 | Full Disk Access | Reads the Notes database, read-only, to build the search index and to find the note you copy or link. Nothing is ever written to it. tabieum cannot grant this for you; you switch it on in System Settings. | The index cannot sync, so search and MCP find only what is already indexed. Copy as Markdown and backlinks cannot find the note. |
-| Automation (Notes) | Asks Notes which note is open or selected, and reads the notes in your templates folder. If you turn on writing for agents, it also creates, edits or deletes notes through Notes. | Backlinks, copy and the `/` template list cannot see the current note. Agents cannot write notes. |
+| Automation (Notes) | Asks Notes which note is open or selected, and reads the notes in your templates folder, and finds, creates and opens today's note. If you turn on writing for agents, it also creates, edits or deletes notes through Notes. | Backlinks, copy and the `/` template list cannot see the current note. Agents cannot write notes. |
 
 If you update with the same signing certificate, the permissions stay. If the certificate ever changes, you will be asked again once. To take a permission back, switch it off in the same System Settings page, or run `tccutil reset All dev.juhyeonni.tabieum` to reset all of them.
 

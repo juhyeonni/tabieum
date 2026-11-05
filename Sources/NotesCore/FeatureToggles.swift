@@ -50,6 +50,11 @@ public final class FeatureToggles: ObservableObject {
         set { setShortcut("copyLinkShortcut", newValue) }
     }
 
+    public var dailyNoteShortcut: Shortcut {
+        get { shortcut("dailyNoteShortcut", fallback: .dailyNote) }
+        set { setShortcut("dailyNoteShortcut", newValue) }
+    }
+
     private func shortcut(_ name: String, fallback: Shortcut) -> Shortcut {
         guard let code = defaults.object(forKey: "\(name).keyCode") as? Int,
               let flags = defaults.object(forKey: "\(name).modifiers") as? Int
