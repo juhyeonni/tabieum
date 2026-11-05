@@ -13,7 +13,7 @@ The app lives in the menu bar and has no Dock icon.
 - **Copy as Markdown / Copy Deeplink:** ⌃⌥⌘M and ⌃⌥⌘L, or the small button at the bottom of the editor.
 - **Today's note:** ⌃⌥⌘D opens the note titled with today's date as `YYYY-MM-DD` (your time zone), or creates it in Notes' default folder the first time that day. If your templates folder has a note named "Daily" (case does not matter), the new note copies it with its first line replaced by the date. It needs the Automation permission for Notes, not Full Disk Access. Change the shortcut in Settings > General.
 - **Markdown shortcuts:** type Markdown while you write and the matching Notes style is applied. Each one can be turned off in Settings > Editor.
-- **Templates and slash commands:** type `/` in a note to insert a template from a folder you choose, apply a style or run a command.
+- **Templates and slash commands:** type `/` in a note to insert a template from a folder you choose, apply a style, run a command, or insert a table with `/table` (3 by 3) or `/table4x2` (columns by rows, up to 10 by 20).
 
 ## Options you turn on
 
