@@ -175,3 +175,54 @@ private func errorCode(_ message: [String: Any]) -> Int? {
         #expect(throws: SQLiteError.self) { try index.db.run("DELETE FROM notes") }
     }
 }
+
+@Suite struct SearchCommandTests {
+    private func run(_ url: URL, _ args: [String]) -> (output: String, exitCode: Int32) {
+        SearchCommand.run(arguments: args, serverName: "tabieum", indexURL: url)
+    }
+
+    private func results(_ output: String) throws -> [[String: Any]] {
+        let object = try #require(JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any])
+        return try #require(object["results"] as? [[String: Any]])
+    }
+
+    @Test func printsTheMCPFields() throws {
+        let url = try fixtureIndex()
+        let out = run(url, ["Garage", "--json"])
+        #expect(out.exitCode == 0)
+        let hits = try results(out.output)
+        #expect(hits.count == 1)
+        let call = #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_notes","arguments":{"query":"Garage"}}}"#
+        let mcp = try reply(server(url), call)
+        let text = try #require(((mcp["result"] as? [String: Any])?["content"] as? [[String: Any]])?.first?["text"] as? String)
+        let expected = try #require(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [[String: Any]])
+        #expect(NSDictionary(dictionary: hits[0]).isEqual(to: expected[0]))
+        #expect(hits[0]["modified"] as? String == "2001-01-01T00:01:40Z")
+    }
+
+    @Test func clampsTheLimit() throws {
+        let url = try fixtureIndex()
+        #expect(try results(run(url, ["apple", "--limit", "0"]).output).count == 1)
+        #expect(try results(run(url, ["apple", "--limit", "500"]).output).count == 50)
+        #expect(try results(run(url, ["apple"]).output).count == 10)
+    }
+
+    @Test func reportsErrorsAndEmptyResults() throws {
+        let url = try fixtureIndex()
+        let missing = run(tempURL(), ["apple"])
+        #expect(missing.exitCode == 1)
+        #expect(missing.output.hasPrefix(#"{"error":"No search index yet."#))
+        #expect(run(url, ["--json"]).exitCode == 2)
+        #expect(run(url, ["apple", "--limit"]).exitCode == 2)
+        let none = run(url, ["zzzznothing"])
+        #expect(none.exitCode == 0)
+        #expect(none.output == #"{"results":[]}"#)
+    }
+
+    @Test func leavesTheIndexUnchanged() throws {
+        let url = try fixtureIndex()
+        let before = try Data(contentsOf: url)
+        _ = run(url, ["apple"])
+        #expect(try Data(contentsOf: url) == before)
+    }
+}

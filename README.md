@@ -8,7 +8,7 @@ tabieum is a separate app that works next to Notes; it is not a plug-in for it. 
 
 ## What you get
 
-- **Always on:** search by keyword with a global shortcut (default ⌃⌥⌘N), backlinks, copy as Markdown or as a deeplink, Markdown shortcuts, templates and `/` commands.
+- **Always on:** search by keyword with a global shortcut (default ⌃⌥⌘N), quick append to an Inbox note (default ⌃⌥⌘A), today's note (⌃⌥⌘D), `tabieum://search`, `open` and `append` URLs, backlinks, copy as Markdown or as a deeplink, Markdown shortcuts, templates and `/` commands.
 - **Options you turn on:** a Vim mode, search by meaning, and AI helpers.
 - **For agents:** an MCP server, so Claude Desktop, Claude Code and other clients can search your notes.
 
@@ -44,7 +44,7 @@ tabieum asks for three permissions in System Settings > Privacy & Security. It s
 |---|---|---|
 | Accessibility | Reads the Notes window and cursor so keyboard features work inside Notes: Vim mode, Markdown shortcuts, the `/` menu and the button at the bottom of the editor. | Those features do not work. The search shortcut and MCP still do. |
 | Full Disk Access | Reads the Notes database, read-only, to build the search index and to find the note you copy or link. Nothing is ever written to it. tabieum cannot grant this for you; you switch it on in System Settings. | The index cannot sync, so search and MCP find only what is already indexed. Copy as Markdown and backlinks cannot find the note. |
-| Automation (Notes) | Asks Notes which note is open or selected, and reads the notes in your templates folder. If you turn on writing for agents, it also creates, edits or deletes notes through Notes. | Backlinks, copy and the `/` template list cannot see the current note. Agents cannot write notes. |
+| Automation (Notes) | Asks Notes which note is open or selected, and reads the notes in your templates folder, and finds, creates and opens today's note. The quick append shortcut writes your line to the Inbox note through Notes. If you turn on writing for agents, it also creates, edits or deletes notes through Notes. | Backlinks, copy and the `/` template list cannot see the current note. Quick append and agents cannot write notes. |
 
 If you update with the same signing certificate, the permissions stay. If the certificate ever changes, you will be asked again once. To take a permission back, switch it off in the same System Settings page, or run `tccutil reset All dev.juhyeonni.tabieum` to reset all of them.
 
@@ -103,6 +103,23 @@ The app's own executable is an MCP server over stdio when started with `--mcp`. 
 If you moved the app out of Applications, use its real path. If Claude Desktop does not show the server, look at `~/Library/Logs/Claude/mcp-server-tabieum.log`.
 
 Note text that the tools return to an agent can contain instructions written by someone else. Treat it as untrusted input. Reading never changes your notes, and writing is off until you turn it on.
+
+### Searching from the command line
+
+`tabieum search <words> [--limit n] [--json]` prints the matching notes as JSON and exits, with no app window. It runs word search over the same index, read-only, and does not need the app to be running or Full Disk Access. Results are as fresh as the app's last sync. `--limit` defaults to 10 and is clamped to 1 through 50. `--json` is accepted and changes nothing: JSON is the only format.
+
+```
+$ /Applications/tabieum.app/Contents/MacOS/tabieum search budget --json
+{"results":[{"folder":"Work","id":"...","modified":"2026-11-06T09:00:00Z","snippet":"...","title":"Budget"}]}
+```
+
+Each result has the same fields as the MCP `search_notes` tool. Errors are `{"error":"..."}` on standard output.
+
+| Exit code | Meaning |
+|---|---|
+| 0 | Success, also with no matches (`{"results":[]}`) |
+| 1 | The search index is missing or unreadable |
+| 2 | Usage error, such as no words |
 
 ### Letting agents write to Notes
 
