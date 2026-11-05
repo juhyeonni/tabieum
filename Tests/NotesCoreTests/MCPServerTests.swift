@@ -68,7 +68,8 @@ private func errorCode(_ message: [String: Any]) -> Int? {
     @Test func toolsListHasInputSchemas() throws {
         let message = try reply(server(tempURL()), #"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#)
         let tools = try #require((message["result"] as? [String: Any])?["tools"] as? [[String: Any]])
-        #expect(tools.compactMap { $0["name"] as? String } == ["search_notes", "get_note", "list_backlinks"])
+        #expect(tools.compactMap { $0["name"] as? String } == ["search_notes", "get_note", "list_backlinks", "list_recent_notes", "list_folders"])
+        #expect(tools.allSatisfy { ($0["annotations"] as? [String: Any])?["readOnlyHint"] as? Bool == true })
         #expect(tools.allSatisfy { $0["inputSchema"] != nil })
     }
 
@@ -116,6 +117,42 @@ private func errorCode(_ message: [String: Any]) -> Int? {
         #expect(rows[0]["id"] as? String == "B" && rows[0]["title"] as? String == "Source" && rows[0]["folder"] as? String == "Home")
         #expect(try hits(callTool(s, "list_backlinks", #"{"id":"B"}"#).text).isEmpty)
         #expect(try callTool(s, "list_backlinks", #"{"id":"nope"}"#).isError)
+    }
+
+    @Test func listRecentNotesPagesNewestFirst() throws {
+        let url = tempURL()
+        let index = try SearchIndex(url: url)
+        try index.upsert((1...5).map {
+            IndexedNote(id: "n\($0)", title: "T\($0)", folder: $0 > 3 ? "Home" : "Work",
+                        modified: Date(timeIntervalSinceReferenceDate: Double($0 / 2) * 100), body: "b", owner: "")
+        })
+        let s = server(url)
+        func page(_ arguments: String) throws -> (ids: [String], cursor: String?) {
+            let result = try callTool(s, "list_recent_notes", arguments)
+            let output = try #require(JSONSerialization.jsonObject(with: Data(result.text.utf8)) as? [String: Any])
+            let notes = try #require(output["notes"] as? [[String: Any]])
+            return (notes.compactMap { $0["id"] as? String }, output["next_cursor"] as? String)
+        }
+        let first = try page(#"{"limit":2}"#)
+        #expect(first.ids == ["n5", "n4"] && first.cursor != nil)
+        let second = try page(#"{"limit":2,"cursor":"\#(first.cursor!)"}"#)
+        #expect(second.ids == ["n3", "n2"] && second.cursor != nil)
+        let third = try page(#"{"limit":2,"cursor":"\#(second.cursor!)"}"#)
+        #expect(third.ids == ["n1"] && third.cursor == nil)
+        #expect(try page(#"{"folder":"Home"}"#).ids == ["n5", "n4"])
+        #expect(try page(#"{"folder":"Nope"}"#).ids.isEmpty)
+        #expect(try page(#"{"limit":0}"#).ids.count == 1)
+        #expect(try callTool(s, "list_recent_notes", #"{"cursor":"%%%"}"#).isError)
+        let note = try hits("[" + (try callTool(s, "list_recent_notes", #"{"limit":1}"#).text) + "]")
+        #expect(((note[0]["notes"] as? [[String: Any]])?[0]["modified"] as? String) == "2001-01-01T00:03:20Z")
+    }
+
+    @Test func listFoldersCountsByName() throws {
+        let s = server(try fixtureIndex())
+        let result = try callTool(s, "list_folders", "{}")
+        let rows = try hits(result.text)
+        #expect(rows.compactMap { $0["folder"] as? String } == ["Home", "Work"])
+        #expect(rows.compactMap { $0["count"] as? Int } == [1, 60])
     }
 
     @Test func protocolErrorsAndNotifications() throws {
