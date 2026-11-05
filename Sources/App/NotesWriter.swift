@@ -115,13 +115,13 @@ struct AppleScriptNotesWriter: NoteWriter {
         "folder \(quoted(target.folder)) of account \(quoted(target.account))"
     }
 
-    private static func quoted(_ string: String) -> String {
+    static func quoted(_ string: String) -> String {
         "\"" + string.replacing("\\", with: "\\\\").replacing("\"", with: "\\\"") + "\""
     }
 
     /// NSAppleScript runs on the main thread, like the rest of the app's scripts.
     @MainActor
-    private static func run(_ source: String) throws -> ScriptValue {
+    static func run(_ source: String) throws -> ScriptValue {
         var error: NSDictionary?
         let result = NSAppleScript(source: source)?.executeAndReturnError(&error)
         if let error {
