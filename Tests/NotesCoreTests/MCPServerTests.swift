@@ -68,7 +68,8 @@ private func errorCode(_ message: [String: Any]) -> Int? {
     @Test func toolsListHasInputSchemas() throws {
         let message = try reply(server(tempURL()), #"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#)
         let tools = try #require((message["result"] as? [String: Any])?["tools"] as? [[String: Any]])
-        #expect(tools.compactMap { $0["name"] as? String } == ["search_notes", "get_note", "list_backlinks"])
+        #expect(tools.compactMap { $0["name"] as? String } == ["search_notes", "get_note", "list_backlinks", "list_recent_notes", "list_folders"])
+        #expect(tools.allSatisfy { ($0["annotations"] as? [String: Any])?["readOnlyHint"] as? Bool == true })
         #expect(tools.allSatisfy { $0["inputSchema"] != nil })
     }
 
@@ -118,6 +119,42 @@ private func errorCode(_ message: [String: Any]) -> Int? {
         #expect(try callTool(s, "list_backlinks", #"{"id":"nope"}"#).isError)
     }
 
+    @Test func listRecentNotesPagesNewestFirst() throws {
+        let url = tempURL()
+        let index = try SearchIndex(url: url)
+        try index.upsert((1...5).map {
+            IndexedNote(id: "n\($0)", title: "T\($0)", folder: $0 > 3 ? "Home" : "Work",
+                        modified: Date(timeIntervalSinceReferenceDate: Double($0 / 2) * 100), body: "b", owner: "")
+        })
+        let s = server(url)
+        func page(_ arguments: String) throws -> (ids: [String], cursor: String?) {
+            let result = try callTool(s, "list_recent_notes", arguments)
+            let output = try #require(JSONSerialization.jsonObject(with: Data(result.text.utf8)) as? [String: Any])
+            let notes = try #require(output["notes"] as? [[String: Any]])
+            return (notes.compactMap { $0["id"] as? String }, output["next_cursor"] as? String)
+        }
+        let first = try page(#"{"limit":2}"#)
+        #expect(first.ids == ["n5", "n4"] && first.cursor != nil)
+        let second = try page(#"{"limit":2,"cursor":"\#(first.cursor!)"}"#)
+        #expect(second.ids == ["n3", "n2"] && second.cursor != nil)
+        let third = try page(#"{"limit":2,"cursor":"\#(second.cursor!)"}"#)
+        #expect(third.ids == ["n1"] && third.cursor == nil)
+        #expect(try page(#"{"folder":"Home"}"#).ids == ["n5", "n4"])
+        #expect(try page(#"{"folder":"Nope"}"#).ids.isEmpty)
+        #expect(try page(#"{"limit":0}"#).ids.count == 1)
+        #expect(try callTool(s, "list_recent_notes", #"{"cursor":"%%%"}"#).isError)
+        let note = try hits("[" + (try callTool(s, "list_recent_notes", #"{"limit":1}"#).text) + "]")
+        #expect(((note[0]["notes"] as? [[String: Any]])?[0]["modified"] as? String) == "2001-01-01T00:03:20Z")
+    }
+
+    @Test func listFoldersCountsByName() throws {
+        let s = server(try fixtureIndex())
+        let result = try callTool(s, "list_folders", "{}")
+        let rows = try hits(result.text)
+        #expect(rows.compactMap { $0["folder"] as? String } == ["Home", "Work"])
+        #expect(rows.compactMap { $0["count"] as? Int } == [1, 60])
+    }
+
     @Test func protocolErrorsAndNotifications() throws {
         let s = server(tempURL())
         #expect(errorCode(try reply(s, #"{"jsonrpc":"2.0","id":1,"method":"server/discover"}"#)) == -32601)
@@ -136,5 +173,56 @@ private func errorCode(_ message: [String: Any]) -> Int? {
     @Test func readOnlyConnectionRejectsWrites() throws {
         let index = try SearchIndex(url: try fixtureIndex(), readOnly: true)
         #expect(throws: SQLiteError.self) { try index.db.run("DELETE FROM notes") }
+    }
+}
+
+@Suite struct SearchCommandTests {
+    private func run(_ url: URL, _ args: [String]) -> (output: String, exitCode: Int32) {
+        SearchCommand.run(arguments: args, serverName: "tabieum", indexURL: url)
+    }
+
+    private func results(_ output: String) throws -> [[String: Any]] {
+        let object = try #require(JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any])
+        return try #require(object["results"] as? [[String: Any]])
+    }
+
+    @Test func printsTheMCPFields() throws {
+        let url = try fixtureIndex()
+        let out = run(url, ["Garage", "--json"])
+        #expect(out.exitCode == 0)
+        let hits = try results(out.output)
+        #expect(hits.count == 1)
+        let call = #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_notes","arguments":{"query":"Garage"}}}"#
+        let mcp = try reply(server(url), call)
+        let text = try #require(((mcp["result"] as? [String: Any])?["content"] as? [[String: Any]])?.first?["text"] as? String)
+        let expected = try #require(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [[String: Any]])
+        #expect(NSDictionary(dictionary: hits[0]).isEqual(to: expected[0]))
+        #expect(hits[0]["modified"] as? String == "2001-01-01T00:01:40Z")
+    }
+
+    @Test func clampsTheLimit() throws {
+        let url = try fixtureIndex()
+        #expect(try results(run(url, ["apple", "--limit", "0"]).output).count == 1)
+        #expect(try results(run(url, ["apple", "--limit", "500"]).output).count == 50)
+        #expect(try results(run(url, ["apple"]).output).count == 10)
+    }
+
+    @Test func reportsErrorsAndEmptyResults() throws {
+        let url = try fixtureIndex()
+        let missing = run(tempURL(), ["apple"])
+        #expect(missing.exitCode == 1)
+        #expect(missing.output.hasPrefix(#"{"error":"No search index yet."#))
+        #expect(run(url, ["--json"]).exitCode == 2)
+        #expect(run(url, ["apple", "--limit"]).exitCode == 2)
+        let none = run(url, ["zzzznothing"])
+        #expect(none.exitCode == 0)
+        #expect(none.output == #"{"results":[]}"#)
+    }
+
+    @Test func leavesTheIndexUnchanged() throws {
+        let url = try fixtureIndex()
+        let before = try Data(contentsOf: url)
+        _ = run(url, ["apple"])
+        #expect(try Data(contentsOf: url) == before)
     }
 }

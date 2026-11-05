@@ -34,6 +34,7 @@ public struct SlashItem: Equatable, Sendable {
         case command(Int)
         /// Text to paste in place of the `/query`.
         case insert(String)
+        case table(columns: Int, rows: Int)
     }
 
     public var title: String
@@ -48,7 +49,7 @@ public struct SlashItem: Equatable, Sendable {
         switch action {
         case .template: .templates
         case .style: .styles
-        case .command, .insert: .commands
+        case .command, .insert, .table: .commands
         }
     }
 
@@ -59,6 +60,31 @@ public struct SlashItem: Equatable, Sendable {
     }
 
     public static let builtIns = NotesStyle.allCases.map { SlashItem(title: $0.displayName, action: .style($0)) }
+
+    public static let table = SlashItem(title: "Table", action: .table(columns: 3, rows: 3))
+}
+
+/// The size in a `table<columns>x<rows>` query: up to 10 columns by 20 rows.
+public func tableSize(query: String) -> (columns: Int, rows: Int)? {
+    let parts = query.lowercased().split(separator: "x", omittingEmptySubsequences: false)
+    guard parts.count == 2, parts[0].hasPrefix("table") else { return nil }
+    let numbers = [parts[0].dropFirst(5), parts[1]]
+    guard numbers.allSatisfy({ !$0.isEmpty && $0.allSatisfy { $0.isASCII && $0.isNumber } }),
+          let columns = Int(numbers[0]), let rows = Int(numbers[1]),
+          (1...10).contains(columns), (1...20).contains(rows)
+    else { return nil }
+    return (columns, rows)
+}
+
+/// A table of empty cells as Notes HTML.
+public func tableHTML(columns: Int, rows: Int) -> String {
+    let row = "<tr>" + String(repeating: "<td></td>", count: columns) + "</tr>"
+    return "<table>" + String(repeating: row, count: rows) + "</table>"
+}
+
+/// A table of empty cells as tab-separated plain text.
+public func tablePlainText(columns: Int, rows: Int) -> String {
+    String(repeating: String(repeating: "\t", count: columns - 1) + "\n", count: rows)
 }
 
 private func isoText(daysFrom offset: Int, time: String?, now: Date, calendar: Calendar) -> String {
@@ -100,6 +126,10 @@ extension SlashItem {
 public func filterSlashItems(_ items: [SlashItem], query: String) -> [SlashItem] {
     let query = query.precomposedStringWithCanonicalMapping
     guard !query.isEmpty else { return items }
+    if let size = tableSize(query: query) {
+        return [SlashItem(title: "Table \(size.columns)×\(size.rows)", action: .table(columns: size.columns, rows: size.rows))]
+    }
+    if query.lowercased().wholeMatch(of: /table(\d{1,2}x?)?/) != nil { return items.filter { $0 == .table } }
     var prefixed: [SlashItem] = []
     var contained: [SlashItem] = []
     for item in items {

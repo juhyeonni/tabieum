@@ -48,6 +48,15 @@ public enum NoteHTML {
         return out
     }
 
+    /// One line of plain text as a note line; `<` and `&` stay literal.
+    public static func line(_ text: String) -> String {
+        "<div>" + escaped(text).replacingOccurrences(of: "\n", with: "<br>") + "</div>"
+    }
+
+    public static func titleLine(_ text: String) -> String {
+        "<div><h1>" + escaped(text) + "</h1></div>"
+    }
+
     private static func heading(_ line: String) -> (Int, String)? {
         let hashes = line.prefix(while: { $0 == "#" }).count
         guard (1...3).contains(hashes), line.dropFirst(hashes).first == " " else { return nil }
