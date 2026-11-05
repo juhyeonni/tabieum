@@ -85,6 +85,11 @@ enum NotesControl {
         AXUIElementPerformAction(item, kAXPressAction as CFString)
     }
 
+    static func menuItem(for tool: FormatTool, pid: pid_t) -> AXUIElement? {
+        let (char, modifiers) = tool.keyEquivalent
+        return menuItem(char: char, modifiers: modifiers, pid: pid)
+    }
+
     private static func menuItem(for style: NotesStyle, pid: pid_t) -> AXUIElement? {
         let (char, modifiers) = style.keyEquivalent
         return menuItem(char: char, modifiers: modifiers, pid: pid)

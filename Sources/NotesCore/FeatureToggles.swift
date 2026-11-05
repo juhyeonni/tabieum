@@ -19,6 +19,7 @@ public final class FeatureToggles: ObservableObject {
         didSet { defaults.set(try? JSONEncoder().encode(savedSearches), forKey: "savedSearches") }
     }
     @Published public var write: WriteSettings { didSet { write.save(to: defaults) } }
+    @Published public var formatToolbarEnabled: Bool { didSet { defaults.set(formatToolbarEnabled, forKey: "formatToolbarEnabled") } }
     @Published public var showCaretOverlay: Bool { didSet { defaults.set(showCaretOverlay, forKey: "showCaretOverlay") } }
     @Published public var showVimLatency: Bool { didSet { defaults.set(showVimLatency, forKey: "showVimLatency") } }
     @Published public var aiShortcut: HotKey {
@@ -93,6 +94,7 @@ public final class FeatureToggles: ObservableObject {
         mcpEnabled = defaults.bool(forKey: "mcpEnabled")
         aiEnabled = defaults.bool(forKey: "aiEnabled")
         write = WriteSettings(defaults: defaults)
+        formatToolbarEnabled = defaults.bool(forKey: "formatToolbarEnabled")
         savedSearches = defaults.data(forKey: "savedSearches").flatMap { try? JSONDecoder().decode([SavedSearch].self, from: $0) } ?? []
         showCaretOverlay = defaults.bool(forKey: "showCaretOverlay")
         showVimLatency = defaults.bool(forKey: "showVimLatency")
