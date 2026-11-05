@@ -14,6 +14,10 @@ public final class FeatureToggles: ObservableObject {
     @Published public var embeddingModel: EmbeddingModel { didSet { defaults.set(embeddingModel.rawValue, forKey: EmbeddingModel.defaultsKey) } }
     @Published public var mcpEnabled: Bool { didSet { defaults.set(mcpEnabled, forKey: "mcpEnabled") } }
     @Published public var aiEnabled: Bool { didSet { defaults.set(aiEnabled, forKey: "aiEnabled") } }
+    /// Searches saved from the search panel, in the order they were saved.
+    @Published public var savedSearches: [SavedSearch] {
+        didSet { defaults.set(try? JSONEncoder().encode(savedSearches), forKey: "savedSearches") }
+    }
     @Published public var write: WriteSettings { didSet { write.save(to: defaults) } }
     @Published public var showCaretOverlay: Bool { didSet { defaults.set(showCaretOverlay, forKey: "showCaretOverlay") } }
     @Published public var showVimLatency: Bool { didSet { defaults.set(showVimLatency, forKey: "showVimLatency") } }
@@ -53,6 +57,11 @@ public final class FeatureToggles: ObservableObject {
         set { setShortcut("copyLinkShortcut", newValue) }
     }
 
+    public var dailyNoteShortcut: Shortcut {
+        get { shortcut("dailyNoteShortcut", fallback: .dailyNote) }
+        set { setShortcut("dailyNoteShortcut", newValue) }
+    }
+
     public var appendShortcut: Shortcut {
         get { shortcut("appendShortcut", fallback: .append) }
         set { setShortcut("appendShortcut", newValue) }
@@ -84,6 +93,7 @@ public final class FeatureToggles: ObservableObject {
         mcpEnabled = defaults.bool(forKey: "mcpEnabled")
         aiEnabled = defaults.bool(forKey: "aiEnabled")
         write = WriteSettings(defaults: defaults)
+        savedSearches = defaults.data(forKey: "savedSearches").flatMap { try? JSONDecoder().decode([SavedSearch].self, from: $0) } ?? []
         showCaretOverlay = defaults.bool(forKey: "showCaretOverlay")
         showVimLatency = defaults.bool(forKey: "showVimLatency")
         let stored = HotKey(keyCode: UInt16(defaults.integer(forKey: "aiShortcutKeyCode")),
