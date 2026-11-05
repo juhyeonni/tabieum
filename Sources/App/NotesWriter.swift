@@ -135,6 +135,25 @@ struct AppleScriptNotesWriter: NoteWriter {
     }
 }
 
+extension AppleScriptNotesWriter: InboxWriter {
+    func append(html: String, toNoteTitled title: String) async throws -> Bool {
+        try await Self.run("""
+        tell application "Notes"
+            set found to notes whose name is \(Self.quoted(title))
+            if (count of found) is 0 then return false
+            set n to item 1 of found
+            set body of n to (body of n) & \(Self.quoted(html))
+            return true
+        end tell
+        """).flag
+    }
+
+    func createNote(titled title: String, html: String) async throws {
+        let body = Self.quoted(NoteHTML.titleLine(title) + html)
+        _ = try await Self.run("tell application \"Notes\" to make new note with properties {body:\(body)}")
+    }
+}
+
 /// Asks the owner in a modal alert. Cancelling the waiting task closes the alert.
 struct AlertConfirmer: WriteConfirmer {
     @MainActor private final class Shown { var alert: NSAlert? }

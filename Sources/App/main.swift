@@ -53,6 +53,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     private var aiAssistant: AIAssistant?
     private var actionButton: ActionButton?
+    private lazy var appendPanel = AppendPanel(toggles: toggles)
+    private lazy var appendShortcut = ShortcutController(
+        toggles: toggles, title: "Append to Inbox shortcut", id: 5, keyPath: \.appendShortcut) { [weak self] in self?.appendPanel.show() }
     private var cancellables: Set<AnyCancellable> = []
 
     private var productName: String { ProductInfo.main?.name ?? ProcessInfo.processInfo.processName }
@@ -121,7 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             backlinksPanel = BacklinksPanel(indexURL: indexURL)
             startWriteServer(bundleIdentifier: bundleIdentifier)
         }
-        _ = (searchShortcut, copyMarkdownShortcut, copyLinkShortcut, dailyNoteShortcut)
+        _ = (searchShortcut, copyMarkdownShortcut, copyLinkShortcut, dailyNoteShortcut, appendShortcut)
 
         Task {
             await status.refresh()
@@ -142,6 +145,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for case let action? in urls.map(TabieumURL.parse) {
+            switch action {
+            case .search(let query): searchPanel?.show(query: query)
+            case .open(let id): NSWorkspace.shared.open(NoteLink(identifier: id).url)
+            case .append(let text): appendPanel.show(text: text)
+            }
+        }
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         writeServer?.stop()
     }
@@ -150,7 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let created = settingsWindow == nil
         let window = settingsWindow ?? makeWindow(title: "Settings", view: SettingsView(
             status: status, toggles: toggles, ai: ai, embedding: embedding, install: modelInstall,
-            shortcuts: [searchShortcut, copyMarkdownShortcut, copyLinkShortcut, dailyNoteShortcut],
+            shortcuts: [searchShortcut, copyMarkdownShortcut, copyLinkShortcut, dailyNoteShortcut, appendShortcut],
             productName: productName, version: productVersion, checkForUpdates: { [weak self] in self?.checkForUpdates() },
             showOnboarding: { [weak self] in self?.showOnboarding() }, setRAG: { [weak self] in self?.setRAG($0) },
             chooseModel: { [weak self] in self?.chooseModel($0) }, retryInstall: { [weak self] in self?.installModel() }))

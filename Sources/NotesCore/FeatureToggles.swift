@@ -38,6 +38,9 @@ public final class FeatureToggles: ObservableObject {
     /// The folder, in every account, whose notes the `/` panel lists as templates.
     @Published public var templateFolder: String { didSet { defaults.set(templateFolder, forKey: "templateFolder") } }
 
+    /// The title of the note the append shortcut adds lines to.
+    @Published public var inboxTitle: String { didSet { defaults.set(inboxTitle, forKey: "inboxTitle") } }
+
     /// The global shortcut that opens the search panel.
     public var searchShortcut: Shortcut {
         get { shortcut("searchShortcut", fallback: .default) }
@@ -59,6 +62,11 @@ public final class FeatureToggles: ObservableObject {
         set { setShortcut("dailyNoteShortcut", newValue) }
     }
 
+    public var appendShortcut: Shortcut {
+        get { shortcut("appendShortcut", fallback: .append) }
+        set { setShortcut("appendShortcut", newValue) }
+    }
+
     private func shortcut(_ name: String, fallback: Shortcut) -> Shortcut {
         guard let code = defaults.object(forKey: "\(name).keyCode") as? Int,
               let flags = defaults.object(forKey: "\(name).modifiers") as? Int
@@ -75,6 +83,7 @@ public final class FeatureToggles: ObservableObject {
     public init(defaults: UserDefaults = .standard, e5Available: Bool = EmbeddingModel.e5Available) {
         self.defaults = defaults
         templateFolder = defaults.string(forKey: "templateFolder") ?? "Templates"
+        inboxTitle = defaults.string(forKey: "inboxTitle") ?? "Inbox"
         vimEnabled = defaults.bool(forKey: "vimEnabled")
         vimJKEnabled = defaults.bool(forKey: "vimJKEnabled")
         vimCursorShape = defaults.string(forKey: "vimCursorShape").flatMap(VimCursorSetting.init(rawValue:)) ?? .modeBased
