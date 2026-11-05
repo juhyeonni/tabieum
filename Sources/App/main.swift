@@ -260,6 +260,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
 }
 
+if CommandLine.arguments.dropFirst().first == "search" {
+    let info = ProductInfo.main
+    let result = SearchCommand.run(
+        arguments: Array(CommandLine.arguments.dropFirst(2)),
+        serverName: info?.name ?? "tabieum",
+        indexURL: SearchIndex.defaultURL(bundleIdentifier: info?.bundleIdentifier ?? "dev.juhyeonni.tabieum"))
+    print(result.output)
+    exit(result.exitCode)
+}
+
 if CommandLine.arguments.contains("--mcp") {
     let info = ProductInfo.main
     MCPServer(

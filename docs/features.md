@@ -20,4 +20,5 @@ The app lives in the menu bar and has no Dock icon.
 
 ## For agents
 
+- **Search from the command line:** `tabieum search <words> [--limit n] [--json]` prints matching notes as JSON (the `search_notes` fields) and exits; exit code 1 for a missing index, 2 for a usage error. See [Searching from the command line](../README.md#searching-from-the-command-line).
 - **MCP server:** `tabieum --mcp` serves your notes over MCP. It is read-only by default; `create_note`, `update_note` and `delete_note` appear only after you turn on writing for agents. See [AI agents (MCP)](../README.md#ai-agents-mcp).
