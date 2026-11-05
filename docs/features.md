@@ -6,7 +6,7 @@ The app lives in the menu bar and has no Dock icon.
 
 ## Always on
 
-- **Search:** a global shortcut (default ⌃⌥⌘N) opens a panel that searches the notes on this Mac by keyword. The panel lists the notes that have every word first, then those that have only some. Korean words are also matched by their shorter stems, so a word with an ending still finds its note.
+- **Search:** a global shortcut (default ⌃⌥⌘N) opens a panel that searches the notes on this Mac by keyword. The panel lists the notes that have every word first, then those that have only some. Korean words are also matched by their shorter stems, so a word with an ending still finds its note. Two words work inside any query: `in:Work` (or `in:"Work Notes"`) keeps only notes in that folder, and `since:7d` keeps only notes modified in the last 7 days. They filter the first 200 hits, so a match ranked lower is missed. With text in the field, ⌘S asks for a name and saves the query. While the field is empty the panel lists the saved searches: Up and Down select, Return runs one, and ⌘⌫ deletes it.
 - **Backlinks:** the notes that link to the one you have open.
 - **Copy as Markdown / Copy Deeplink:** ⌃⌥⌘M and ⌃⌥⌘L, or the small button at the bottom of the editor.
 - **Markdown shortcuts:** type Markdown while you write and the matching Notes style is applied. Each one can be turned off in Settings > Editor.

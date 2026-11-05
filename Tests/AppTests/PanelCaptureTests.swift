@@ -43,8 +43,9 @@ struct PanelCaptureTests {
             IndexedNote(id: "2", title: "Meeting with the landlord", folder: "Home", modified: date, body: "Ask about the meeting room key.", owner: "a"),
             IndexedNote(id: "3", title: "Reading list", folder: "Notes", modified: date, body: "Books to read before the next meeting.", owner: "a"),
         ])
-        let model = SearchModel(indexURL: index, embedder: { nil })
-        let panel = SearchPanel(indexURL: index, embedder: { nil }).panel
+        let toggles = FeatureToggles(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        let model = SearchModel(toggles: toggles, indexURL: index, embedder: { nil })
+        let panel = SearchPanel(toggles: toggles, indexURL: index, embedder: { nil }).panel
         defer { panel.orderOut(nil) }
         panel.contentView = NSHostingView(rootView: SearchView(model: model, open: { _ in }, close: {}))
         try Capture.captureLowered(panel, as: "search-empty")
