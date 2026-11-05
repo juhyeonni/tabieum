@@ -109,7 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             service.start()
             indexService = service
             if toggles.embeddingModel == .e5Small { installModel() }
-            searchPanel = SearchPanel(indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier)) { [weak self] in
+            searchPanel = SearchPanel(toggles: toggles, indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier)) { [weak self] in
                 guard let self, toggles.ragEnabled, toggles.semanticPanelSearch else { return nil }
                 return panelEmbedder
             }
