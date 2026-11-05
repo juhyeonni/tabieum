@@ -99,6 +99,11 @@ struct SettingsView: View {
                     Button("Show Permissions Onboarding…", action: showOnboarding)
                 }
                 Card { ForEach(shortcuts, id: \.title) { ShortcutRecorder(controller: $0) } }
+                Card {
+                    TextField("Inbox note title", text: $toggles.inboxTitle)
+                    Text("The append shortcut and tabieum://append add a line to this note, and create it the first time.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
             }
             .tabItem { Label("General", systemImage: "gearshape") }
             SettingsPage {

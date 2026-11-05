@@ -84,9 +84,10 @@ final class SearchPanel {
         self.embedder = embedder
     }
 
-    func show() {
+    func show(query: String = "") {
         warmUp()
         let model = SearchModel(indexURL: indexURL, embedder: embedder)
+        model.query = query
         panel.contentView = NSHostingView(rootView: SearchView(model: model, open: { [weak self] in self?.open($0) },
                                                                close: { [weak self] in self?.close() }))
         panel.center()

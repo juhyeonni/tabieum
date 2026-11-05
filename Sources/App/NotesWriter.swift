@@ -115,13 +115,13 @@ struct AppleScriptNotesWriter: NoteWriter {
         "folder \(quoted(target.folder)) of account \(quoted(target.account))"
     }
 
-    private static func quoted(_ string: String) -> String {
+    fileprivate static func quoted(_ string: String) -> String {
         "\"" + string.replacing("\\", with: "\\\\").replacing("\"", with: "\\\"") + "\""
     }
 
     /// NSAppleScript runs on the main thread, like the rest of the app's scripts.
     @MainActor
-    private static func run(_ source: String) throws -> ScriptValue {
+    fileprivate static func run(_ source: String) throws -> ScriptValue {
         var error: NSDictionary?
         let result = NSAppleScript(source: source)?.executeAndReturnError(&error)
         if let error {
@@ -132,6 +132,25 @@ struct AppleScriptNotesWriter: NoteWriter {
         }
         guard let result else { throw WriteFailure.failed("The script could not be compiled.") }
         return ScriptValue(result)
+    }
+}
+
+extension AppleScriptNotesWriter: InboxWriter {
+    func append(html: String, toNoteTitled title: String) async throws -> Bool {
+        try await Self.run("""
+        tell application "Notes"
+            set found to notes whose name is \(Self.quoted(title))
+            if (count of found) is 0 then return false
+            set n to item 1 of found
+            set body of n to (body of n) & \(Self.quoted(html))
+            return true
+        end tell
+        """).flag
+    }
+
+    func createNote(titled title: String, html: String) async throws {
+        let body = Self.quoted(NoteHTML.titleLine(title) + html)
+        _ = try await Self.run("tell application \"Notes\" to make new note with properties {body:\(body)}")
     }
 }
 

@@ -7,6 +7,8 @@ The app lives in the menu bar and has no Dock icon.
 ## Always on
 
 - **Search:** a global shortcut (default ⌃⌥⌘N) opens a panel that searches the notes on this Mac by keyword. The panel lists the notes that have every word first, then those that have only some. Korean words are also matched by their shorter stems, so a word with an ending still finds its note.
+- **Quick append:** a global shortcut (default ⌃⌥⌘A) opens a one-line input. Enter adds the line at the end of your Inbox note, which is created the first time; Esc closes it. The note's title is set in Settings > General (default "Inbox"). This is your own typing, so it does not depend on the agent writing settings. It needs the Automation permission for Notes.
+- **URL scheme:** `tabieum://search?q=<text>` opens the search panel with the text filled in, `tabieum://open?id=<note id>` opens that note, and `tabieum://append?text=<text>` opens the input with the text filled in. Nothing is written until you press Enter, because any app or web page can open a URL. The text is cut at 2000 characters. Unknown or incomplete URLs do nothing.
 - **Backlinks:** the notes that link to the one you have open.
 - **Copy as Markdown / Copy Deeplink:** ⌃⌥⌘M and ⌃⌥⌘L, or the small button at the bottom of the editor.
 - **Markdown shortcuts:** type Markdown while you write and the matching Notes style is applied. Each one can be turned off in Settings > Editor.
