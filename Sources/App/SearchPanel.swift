@@ -175,6 +175,7 @@ struct SearchView: View {
                     .textFieldStyle(.plain)
                     .padding(.horizontal, 12).padding(.bottom, 8)
                     .focused($nameFocused)
+                    .onAppear { nameFocused = true }
                     .onSubmit { model.saveNamed(); focused = true }
                     .onKeyPress(.escape) { model.naming = false; focused = true; return .handled }
             }
@@ -204,7 +205,6 @@ struct SearchView: View {
             Button("") { model.deleteSaved() }.keyboardShortcut(.delete, modifiers: .command)
                 .disabled(model.saved.isEmpty)
         }
-        .onChange(of: model.naming) { _, naming in if naming { nameFocused = true } }
         .frame(width: 640, height: 420)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
         .onAppear { focused = true }
