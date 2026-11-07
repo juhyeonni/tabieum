@@ -17,6 +17,7 @@ final class FormatToolbar: NSObject {
     private var subscription: Int?
     private var togglesSink: AnyCancellable?
     private var pending: Task<Void, Never>?
+    private var clickedRange: NSRange?
     private var loggedMissing: Set<FormatTool> = []
     private let log = Logger(subsystem: "NotesExtension", category: "format-toolbar")
     private let buttons: [NSButton]
@@ -88,6 +89,8 @@ final class FormatToolbar: NSObject {
     }
 
     private func selectionChanged(_ state: TextFocusState) {
+        if shouldHoldFormatToolbar(selection: state.selection, clicked: clickedRange) { return hide() }
+        clickedRange = nil
         guard shouldShowFormatToolbar(
             selectionLength: state.selection?.length, isFocused: state.isFocused, enabled: toggles.formatToolbarEnabled)
         else { return hide() }
@@ -118,6 +121,7 @@ final class FormatToolbar: NSObject {
     }
 
     @objc private func clicked(_ sender: NSButton) {
+        clickedRange = tracker.selectedRange()
         hide()
         guard let pid = NotesControl.pid, let item = NotesControl.menuItem(for: FormatTool.allCases[sender.tag], pid: pid) else { return }
         NotesControl.press(item)
