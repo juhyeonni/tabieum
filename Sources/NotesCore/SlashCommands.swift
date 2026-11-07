@@ -157,6 +157,14 @@ public func slashMenuStaysOpen(_ items: [SlashItem], query: String) -> Bool {
     !filterSlashItems(items, query: query).isEmpty
 }
 
+/// True while `query` is a date word followed by up to four digits, the half-typed shapes of `today1010` that match no item yet.
+public func isTimedDateInProgress(query: String) -> Bool {
+    let query = query.lowercased()
+    guard let entry = dateWords.first(where: { query.hasPrefix($0.word) }) else { return false }
+    let digits = query.dropFirst(entry.word.count)
+    return digits.count <= 4 && digits.allSatisfy { $0.isASCII && $0.isNumber }
+}
+
 /// Commands other features add to the `/` panel, each listed only while its condition holds.
 @MainActor
 public final class SlashCommandRegistry {
