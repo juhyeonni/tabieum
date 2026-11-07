@@ -9,6 +9,8 @@ import os
 @MainActor
 final class FormatToolbar: NSObject {
     private static let settle: Duration = .milliseconds(150)
+    private static let buttonSize = CGSize(width: 32, height: 28)
+    private static let iconPointSize: CGFloat = 16
 
     private let tracker: TextFocusTracker
     private let toggles: FeatureToggles
@@ -27,8 +29,9 @@ final class FormatToolbar: NSObject {
         self.tracker = tracker
         self.toggles = toggles
         buttons = FormatTool.allCases.map {
-            NSButton(image: NSImage(systemSymbolName: $0.symbolName, accessibilityDescription: $0.displayName) ?? NSImage(),
-                     target: nil, action: nil)
+            let image = NSImage(systemSymbolName: $0.symbolName, accessibilityDescription: $0.displayName)?
+                .withSymbolConfiguration(.init(pointSize: Self.iconPointSize, weight: .regular))
+            return NSButton(image: image ?? NSImage(), target: nil, action: nil)
         }
         panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         super.init()
@@ -45,6 +48,8 @@ final class FormatToolbar: NSObject {
             button.tag = index
             button.target = self
             button.action = #selector(clicked(_:))
+            button.widthAnchor.constraint(equalToConstant: Self.buttonSize.width).isActive = true
+            button.heightAnchor.constraint(equalToConstant: Self.buttonSize.height).isActive = true
         }
         let stack = NSStackView(views: buttons)
         stack.spacing = 2

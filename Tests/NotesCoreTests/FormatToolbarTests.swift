@@ -24,7 +24,16 @@ import Testing
         let visible = CGRect(x: 0, y: 0, width: 1000, height: 800)
         let frame = formatToolbarFrame(selection: CGRect(x: 400, y: 300, width: 100, height: 20), size: CGSize(width: 200, height: 30), visible: visible)
         #expect(frame.minY == 326)
-        #expect(frame.midX == 450)
+        #expect(frame.minX == 400)
+    }
+
+    @Test func alignsToTheLeftEdgeEvenForAFullWidthSelection() {
+        let visible = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        let size = CGSize(width: 200, height: 30)
+        let line = formatToolbarFrame(selection: CGRect(x: 100, y: 300, width: 800, height: 20), size: size, visible: visible)
+        #expect(line.minX == 100)
+        let edge = formatToolbarFrame(selection: CGRect(x: 950, y: 300, width: 40, height: 20), size: size, visible: visible)
+        #expect(edge.maxX == 1000)
     }
 
     @Test func fallsBelowWhenThereIsNoRoomAboveAndStaysOnScreen() {

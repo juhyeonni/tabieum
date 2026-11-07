@@ -53,10 +53,10 @@ public func shouldHoldFormatToolbar(selection: NSRange?, clicked: NSRange?) -> B
     return selection == clicked
 }
 
-/// The frame for the toolbar of `size` just above `selection`, or below it when there is no room above, then clamped into `visible`.
+/// The frame for the toolbar of `size` just above `selection`, its left edge at the selection's, or below it when there is no room above, then clamped into `visible`.
 /// All rects are in AppKit coordinates.
 public func formatToolbarFrame(selection: CGRect, size: CGSize, visible: CGRect, gap: CGFloat = 6) -> CGRect {
-    var origin = CGPoint(x: selection.midX - size.width / 2, y: selection.maxY + gap)
+    var origin = CGPoint(x: selection.minX, y: selection.maxY + gap)
     if origin.y + size.height > visible.maxY { origin.y = selection.minY - gap - size.height }
     origin.x = max(visible.minX, min(origin.x, visible.maxX - size.width))
     origin.y = max(visible.minY, min(origin.y, visible.maxY - size.height))
