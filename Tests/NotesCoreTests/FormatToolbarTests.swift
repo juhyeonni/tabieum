@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import Testing
 @testable import NotesCore
 
@@ -9,6 +10,14 @@ import Testing
         #expect(!shouldShowFormatToolbar(selectionLength: nil, isFocused: true, enabled: true))
         #expect(!shouldShowFormatToolbar(selectionLength: 3, isFocused: false, enabled: true))
         #expect(!shouldShowFormatToolbar(selectionLength: 3, isFocused: true, enabled: false))
+    }
+
+    @Test func staysHiddenOnlyForTheClickedSelection() {
+        let clicked = NSRange(location: 4, length: 6)
+        #expect(shouldHoldFormatToolbar(selection: clicked, clicked: clicked))
+        #expect(!shouldHoldFormatToolbar(selection: NSRange(location: 4, length: 3), clicked: clicked))
+        #expect(!shouldHoldFormatToolbar(selection: nil, clicked: clicked))
+        #expect(!shouldHoldFormatToolbar(selection: clicked, clicked: nil))
     }
 
     @Test func sitsAboveTheSelection() {

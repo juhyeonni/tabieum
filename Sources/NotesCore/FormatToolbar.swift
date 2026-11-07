@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 
 /// The buttons of the toolbar shown over a selection, in order.
 public enum FormatTool: CaseIterable, Sendable {
@@ -44,6 +45,12 @@ public enum FormatTool: CaseIterable, Sendable {
 
 public func shouldShowFormatToolbar(selectionLength: Int?, isFocused: Bool, enabled: Bool) -> Bool {
     enabled && isFocused && (selectionLength ?? 0) > 0
+}
+
+/// True while the selection is still the one a format button was clicked on, so applying the style does not bring the toolbar back.
+public func shouldHoldFormatToolbar(selection: NSRange?, clicked: NSRange?) -> Bool {
+    guard let selection, let clicked else { return false }
+    return selection == clicked
 }
 
 /// The frame for the toolbar of `size` just above `selection`, or below it when there is no room above, then clamped into `visible`.
