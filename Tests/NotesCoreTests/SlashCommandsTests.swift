@@ -182,6 +182,17 @@ private func texts(_ now: Date) -> [String] {
     }
 }
 
+@Test func timedDateStaysOpenWhileTyping() {
+    for word in ["today", "tomorrow", "yesterday"] {
+        for digits in ["", "1", "10", "101", "1010"] {
+            #expect(isTimedDateInProgress(query: word + digits))
+        }
+    }
+    for bad in ["today10101", "today1a", "now10", "tod", "1010", ""] {
+        #expect(!isTimedDateInProgress(query: bad))
+    }
+}
+
 // Issue #178
 private func tableItems(_ query: String) -> [SlashItem] {
     filterSlashItems(SlashItem.builtIns + [.table], query: query)

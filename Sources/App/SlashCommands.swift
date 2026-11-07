@@ -52,7 +52,7 @@ final class SlashCommands {
         guard let current else { return }
         guard let query = slashQuery(text: current.text, slashOffset: offset, caret: current.caret) else { return close() }
         let timed = SlashItem.timedDate(query: query, now: Date())
-        guard slashMenuStaysOpen(allItems, query: query) || timed != nil else { return close() }
+        guard slashMenuStaysOpen(allItems, query: query) || timed != nil || isTimedDateInProgress(query: query) else { return close() }
         panel.filter(query, extra: timed)
     }
 
