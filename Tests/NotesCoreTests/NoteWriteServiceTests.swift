@@ -77,7 +77,7 @@ func service(
     _ value: WriteSettings, writer: FakeWriter = FakeWriter(), confirmer: FakeConfirmer = FakeConfirmer(),
     timeout: Duration = .seconds(60)
 ) -> NoteWriteService {
-    NoteWriteService(settings: { value }, writer: writer, confirmer: confirmer, productName: "tabieum", timeout: timeout)
+    NoteWriteService(settings: { value }, writer: writer, confirmer: confirmer, productName: "Tabieum", timeout: timeout)
 }
 
 let createLine = #"{"action":"create","title":"Plan","html":"<div>Ship it</div>"}"#
@@ -188,7 +188,7 @@ private func freshSuite() -> UserDefaults {
     let off = FakeWriter()
     _ = await service(settings { $0.consent = .always; $0.marker = true }, writer: on).handle(createLine, session: WriteSession())
     _ = await service(settings { $0.consent = .always }, writer: off).handle(createLine, session: WriteSession())
-    #expect(on.calls.first?.html.hasSuffix("Created by an AI agent through tabieum.</div>") == true)
+    #expect(on.calls.first?.html.hasSuffix("Created by an AI agent through Tabieum.</div>") == true)
     #expect(off.calls.first?.html == "<div>Ship it</div>")
 }
 

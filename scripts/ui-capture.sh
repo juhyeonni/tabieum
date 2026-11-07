@@ -1,5 +1,5 @@
 #!/bin/sh
-# Saves PNGs of tabieum's windows without taking focus. Needs Screen Recording permission.
+# Saves PNGs of Tabieum's windows without taking focus. Needs Screen Recording permission.
 # Usage: scripts/ui-capture.sh [settings|ai|search|backlinks|toast|action-button|overlays|all] [output-dir] [tab-name]
 # The tab name applies to settings only.
 set -eu

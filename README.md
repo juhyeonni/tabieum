@@ -1,8 +1,8 @@
-# tabieum
+# Tabieum
 
 Search and keyboard features beside Apple Notes, in a menu-bar app. It runs on your Mac, needs no account and has no server.
 
-tabieum is a separate app that works next to Notes; it is not a plug-in for it. It is not affiliated with Apple. Apple Notes is a trademark of Apple Inc.
+Tabieum is a separate app that works next to Notes; it is not a plug-in for it. It is not affiliated with Apple. Apple Notes is a trademark of Apple Inc.
 
 [Install](#install) · [Permissions](#permissions) · [Privacy and network](#privacy-and-network) · [AI agents](#ai-agents-mcp)
 
@@ -25,32 +25,32 @@ brew tap juhyeonni/tap
 brew install --cask tabieum
 ```
 
-**By hand:** download `tabieum-<version>.zip` from [Releases](https://github.com/juhyeonni/tabieum/releases), unzip it and move `tabieum.app` to Applications. Each release has a `.sha256` file to check the download.
+**By hand:** download `Tabieum-<version>.zip` from [Releases](https://github.com/juhyeonni/tabieum/releases), unzip it and move `Tabieum.app` to Applications. Each release has a `.sha256` file to check the download.
 
 ### The first time you open it
 
-tabieum is signed with its developer's own certificate. Apple has not notarized it, so macOS asks you to confirm the first launch. Do one of these:
+Tabieum is signed with its developer's own certificate. Apple has not notarized it, so macOS asks you to confirm the first launch. Do one of these:
 
-- Open **System Settings > Privacy & Security**, scroll to the message about tabieum and choose **Open Anyway**. [Apple describes these steps](https://support.apple.com/en-us/102445).
-- Or run `xattr -dr com.apple.quarantine /Applications/tabieum.app` once, then open the app. This is the developer's shortcut, not an Apple instruction.
+- Open **System Settings > Privacy & Security**, scroll to the message about Tabieum and choose **Open Anyway**. [Apple describes these steps](https://support.apple.com/en-us/102445).
+- Or run `xattr -dr com.apple.quarantine /Applications/Tabieum.app` once, then open the app. This is the developer's shortcut, not an Apple instruction.
 
 The code is public and you can build it yourself (see [Build from source](#build-from-source)) instead of trusting a download.
 
 ## Permissions
 
-tabieum asks for three permissions in System Settings > Privacy & Security. It shows what is missing and links to each page. None is needed to open the app; each one unlocks the features below.
+Tabieum asks for three permissions in System Settings > Privacy & Security. It shows what is missing and links to each page. None is needed to open the app; each one unlocks the features below.
 
-| Permission | What tabieum uses it for | Without it |
+| Permission | What Tabieum uses it for | Without it |
 |---|---|---|
 | Accessibility | Reads the Notes window and cursor so keyboard features work inside Notes: Vim mode, Markdown shortcuts, the `/` menu and the button at the bottom of the editor. | Those features do not work. The search shortcut and MCP still do. |
-| Full Disk Access | Reads the Notes database, read-only, to build the search index and to find the note you copy or link. Nothing is ever written to it. tabieum cannot grant this for you; you switch it on in System Settings. | The index cannot sync, so search and MCP find only what is already indexed. Copy as Markdown and backlinks cannot find the note. |
+| Full Disk Access | Reads the Notes database, read-only, to build the search index and to find the note you copy or link. Nothing is ever written to it. Tabieum cannot grant this for you; you switch it on in System Settings. | The index cannot sync, so search and MCP find only what is already indexed. Copy as Markdown and backlinks cannot find the note. |
 | Automation (Notes) | Asks Notes which note is open or selected, and reads the notes in your templates folder, and finds, creates and opens today's note. The quick append shortcut writes your line to the Inbox note through Notes. If you turn on writing for agents, it also creates, edits or deletes notes through Notes. | Backlinks, copy and the `/` template list cannot see the current note. Quick append and agents cannot write notes. |
 
 If you update with the same signing certificate, the permissions stay. If the certificate ever changes, you will be asked again once. To take a permission back, switch it off in the same System Settings page, or run `tccutil reset All dev.juhyeonni.tabieum` to reset all of them.
 
 ## Privacy and network
 
-With the default settings tabieum makes no network request. It never checks for updates on its own.
+With the default settings Tabieum makes no network request. It never checks for updates on its own.
 
 | When | What goes out | Where to |
 |---|---|---|
@@ -89,15 +89,15 @@ AI helpers rewrite or summarize a note, answer questions about it, and answer "A
 
 The app's own executable is an MCP server over stdio when started with `--mcp`. It is read-only by default: it opens only the search index, so the client needs no Full Disk Access. Tools: `search_notes`, `get_note`, `list_backlinks`, `list_recent_notes` and `list_folders`. `create_note`, `update_note` and `delete_note` appear only after you turn on writing for agents (see [Letting agents write to Notes](#letting-agents-write-to-notes)).
 
-1. Open tabieum once so it can build the search index. Until then every tool call says there is no index yet.
+1. Open Tabieum once so it can build the search index. Until then every tool call says there is no index yet.
 2. Turn on **AI agents (MCP)** in Settings > Search & Agents. While it is off, every tool call returns an error saying so. Results are as fresh as the app's last sync.
 3. Add the server to your client.
    - **Claude Desktop:** in the menu bar choose Claude > Settings > Developer > Edit Config. The file is `~/Library/Application Support/Claude/claude_desktop_config.json`. Add the server with an absolute path:
      ```json
-     { "mcpServers": { "tabieum": { "command": "/Applications/tabieum.app/Contents/MacOS/tabieum", "args": ["--mcp"] } } }
+     { "mcpServers": { "tabieum": { "command": "/Applications/Tabieum.app/Contents/MacOS/Tabieum", "args": ["--mcp"] } } }
      ```
      Quit Claude Desktop completely and open it again.
-   - **Claude Code:** `claude mcp add tabieum -- /Applications/tabieum.app/Contents/MacOS/tabieum --mcp`. Check it with `claude mcp list`.
+   - **Claude Code:** `claude mcp add tabieum -- /Applications/Tabieum.app/Contents/MacOS/Tabieum --mcp`. Check it with `claude mcp list`.
 4. Check that it works: the client lists `search_notes`, `get_note`, `list_backlinks`, `list_recent_notes` and `list_folders`, and `create_note`, `update_note` and `delete_note` if you turned on writing. Ask it to search your notes.
 
 If you moved the app out of Applications, use its real path. If Claude Desktop does not show the server, look at `~/Library/Logs/Claude/mcp-server-tabieum.log`.
@@ -109,7 +109,7 @@ Note text that the tools return to an agent can contain instructions written by 
 `tabieum search <words> [--limit n] [--json]` prints the matching notes as JSON and exits, with no app window. It runs word search over the same index, read-only, and does not need the app to be running or Full Disk Access. Results are as fresh as the app's last sync. `--limit` defaults to 10 and is clamped to 1 through 50. `--json` is accepted and changes nothing: JSON is the only format.
 
 ```
-$ /Applications/tabieum.app/Contents/MacOS/tabieum search budget --json
+$ /Applications/Tabieum.app/Contents/MacOS/Tabieum search budget --json
 {"results":[{"folder":"Work","id":"...","modified":"2026-11-06T09:00:00Z","snippet":"...","title":"Budget"}]}
 ```
 
@@ -131,19 +131,19 @@ Off by default. Agents can only do what you allow here.
 - **`delete_note`** moves a note to Recently Deleted, where you can restore it. There is no permanent delete. You switch it on with **Allow delete**.
 - **Which notes:** **Edit and delete reach** decides which existing notes an agent can change: only the target folder (the default), any note, or only notes created by agents. Locked notes are never touched.
 - **Your say:** the app asks you before each write and shows a preview. Under **Consent** you can change that to once per session, always, or never. An option marks notes as created by an AI agent.
-- **How it writes:** the running app writes through Notes (Automation permission), so tabieum must be open. Your client may also ask before it calls a tool; that is separate from tabieum's own question.
+- **How it writes:** the running app writes through Notes (Automation permission), so Tabieum must be open. Your client may also ask before it calls a tool; that is separate from Tabieum's own question.
 
 ## Troubleshooting
 
 | Problem | Cause and fix |
 |---|---|
 | Search finds nothing, or misses new notes | The index syncs only with Full Disk Access. Turn it on, then give the app a moment. To start over, delete `index.sqlite` (see [Privacy and network](#privacy-and-network)); it is rebuilt. |
-| A permission shows as granted but a feature does nothing | The entry may belong to an earlier signature of the app, for example after a rebuild. Remove tabieum from the list in System Settings, add it again and restart the app. |
+| A permission shows as granted but a feature does nothing | The entry may belong to an earlier signature of the app, for example after a rebuild. Remove Tabieum from the list in System Settings, add it again and restart the app. |
 | The first search by meaning is slow | The model loads on first use and unloads after a pause. Word matches appear at once and the rest follows. |
 | An MCP tool says the option is turned off | Switch on **AI agents (MCP)** in Settings > Search & Agents. |
-| An MCP tool says there is no index | Open tabieum and let it sync your notes. |
+| An MCP tool says there is no index | Open Tabieum and let it sync your notes. |
 | The server does not show up in Claude Desktop | Check that the path is absolute and the file is valid JSON, quit Claude Desktop completely and open it again, then read the log named above. |
-| A write tool says tabieum is not running | The app does the writing. Open tabieum and try again. |
+| A write tool says Tabieum is not running | The app does the writing. Open Tabieum and try again. |
 | A write tool says writing is off or no target folder is chosen | Turn on **Let AI agents write to Notes** in Settings > Search & Agents and choose a target folder. |
 | `update_note` says the note changed | Read the note again with `get_note` and retry with its new `modified` value. |
 | `update_note` or `delete_note` says no note can be changed | The note is outside the reach you set (the target folder by default), is locked, or does not exist. `update_note` also refuses notes with attachments. |
@@ -152,8 +152,8 @@ Off by default. Agents can only do what you allow here.
 
 ## Uninstall
 
-1. Quit tabieum from its menu bar icon.
-2. Remove the app: `brew uninstall --cask tabieum`, or move `tabieum.app` to the Trash.
+1. Quit Tabieum from its menu bar icon.
+2. Remove the app: `brew uninstall --cask tabieum`, or move `Tabieum.app` to the Trash.
 3. Delete its data:
    - `~/Library/Application Support/dev.juhyeonni.tabieum/` (the search index and the downloaded model)
    - `~/Library/Preferences/dev.juhyeonni.tabieum.plist`
@@ -167,10 +167,10 @@ You need macOS 15, Swift 6.2 or later, and either Xcode or only the Command Line
 ```sh
 swift build          # debug build
 scripts/test.sh      # run the tests
-scripts/bundle.sh    # build build/tabieum.app (release, ad-hoc signed)
+scripts/bundle.sh    # build build/Tabieum.app (release, ad-hoc signed)
 ```
 
-To see tabieum's windows without taking over your screen or keyboard focus, run `scripts/ui-capture.sh [target]`, where the target is `settings` (the default), `ai`, `search`, `backlinks`, `toast`, `action-button`, `overlays` or `all`. It saves PNGs in `build/ui-capture/` and needs Screen Recording permission for your terminal. The windows are shown for a few seconds below your other windows. The panels show fake data, and the Toast and the action button flash above other windows for a moment.
+To see Tabieum's windows without taking over your screen or keyboard focus, run `scripts/ui-capture.sh [target]`, where the target is `settings` (the default), `ai`, `search`, `backlinks`, `toast`, `action-button`, `overlays` or `all`. It saves PNGs in `build/ui-capture/` and needs Screen Recording permission for your terminal. The windows are shown for a few seconds below your other windows. The panels show fake data, and the Toast and the action button flash above other windows for a moment.
 
 ```sh
 scripts/ui-capture.sh all        # every target

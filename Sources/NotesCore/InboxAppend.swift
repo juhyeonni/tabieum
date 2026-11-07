@@ -33,7 +33,7 @@ public final class AppendModel: ObservableObject {
             error = nil
             return true
         } catch WriteFailure.automationDenied {
-            error = "Allow tabieum to control Notes under Automation in System Settings."
+            error = "Allow Tabieum to control Notes under Automation in System Settings."
         } catch let failure {
             error = "Notes could not take the line: \(failure)"
         }
