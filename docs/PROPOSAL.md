@@ -1,5 +1,14 @@
 # 기획서: Apple Notes용 로컬 우선 확장 앱 (`tabieum`)
 
+> 개발 시작 전에 쓴 기획서이고, 본문은 그때 내용 그대로 둔다. 지금 동작은 [README](../README.md)와 [features.md](features.md)를 따른다. 기획과 달라진 점:
+>
+> - GRDB, SwiftProtobuf, sqlite-vec, Sparkle은 쓰지 않는다. SQLite 접근과 protobuf 디코딩은 직접 구현했고, 벡터는 같은 `index.sqlite`의 테이블에 저장한다. 업데이트 확인은 메뉴에서 직접 누를 때만 GitHub API를 부른다.
+> - Vim 모드는 v1 제외 항목이던 카운트, 텍스트 오브젝트, `.` 반복, 매크로까지 구현했다.
+> - AI는 OpenAI 호환 API 외에 Anthropic API 형식도 지원한다.
+> - 임베딩 모델로 macOS 내장 모델 외에 tabieum-e5-small-coreml을 내려받아 쓸 수 있다(Apple silicon 전용).
+> - MCP 서버에 쓰기 도구(`create_note`, `update_note`, `delete_note`)가 생겼다. 기본값은 꺼짐이다.
+> - GitHub Releases와 Homebrew로 배포하고 있다.
+
 ## 1. 한 줄 요약
 
 계정이나 서버 없이 쓰는 Apple Notes 확장 앱이다. 기본 기능은 검색, 백링크, 마크다운, 템플릿이다. **Vim 모드**, **RAG 인덱스**, **AI 플러그인**은 설정에서 켜는 옵션이다.
