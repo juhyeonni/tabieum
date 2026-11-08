@@ -2,6 +2,8 @@
 
 Search and keyboard features beside Apple Notes, in a menu-bar app. It runs on your Mac, needs no account and has no server.
 
+<img src="docs/media/tabieum-hero.gif" width="880" alt="Claude Code asks Tabieum to search the notes and write a summary; after you allow it, the new note appears in Apple Notes with links to its sources.">
+
 Tabieum is a separate app that works next to Notes; it is not a plug-in for it. It is not affiliated with Apple. Apple Notes is a trademark of Apple Inc.
 
 ## What you get
@@ -9,6 +11,8 @@ Tabieum is a separate app that works next to Notes; it is not a plug-in for it. 
 - **Always on:** search by keyword with a global shortcut (default ⌃⌥⌘N), quick append to an Inbox note (⌃⌥⌘A), today's note (⌃⌥⌘D), `tabieum://` URLs, backlinks, copy as Markdown or as a deeplink, Markdown shortcuts, templates and `/` commands.
 - **Options you turn on:** a Vim mode, search by meaning, and AI helpers.
 - **For agents:** an MCP server, so Claude Desktop, Claude Code and other clients can search your notes, and a `search` command for scripts.
+
+<img src="docs/media/tabieum-bento.gif" width="880" alt="Four features: the search panel finding notes by word and by meaning, Vim keys changing a word in a note, a line added to the Inbox note, and three notes linking to one note as backlinks.">
 
 [docs/features.md](docs/features.md) describes every feature and its settings.
 
