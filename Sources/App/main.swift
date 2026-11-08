@@ -1,6 +1,23 @@
 import AppKit
+import Combine
 import NotesCore
 import SwiftUI
+
+@MainActor
+func makeStatusMenu(
+    name: String, version: String, embeddingItem: NSMenuItem, target: AnyObject, showSettings: Selector, checkForUpdates: Selector
+) -> NSMenu {
+    let menu = NSMenu()
+    menu.addItem(withTitle: "Settings…", action: showSettings, keyEquivalent: ",").target = target
+    embeddingItem.isEnabled = false
+    embeddingItem.isHidden = true
+    menu.addItem(embeddingItem)
+    menu.addItem(.separator())
+    menu.addItem(withTitle: "Check for Updates…", action: checkForUpdates, keyEquivalent: "").target = target
+    menu.addItem(withTitle: "\(name) \(version)", action: nil, keyEquivalent: "").isEnabled = false
+    menu.addItem(withTitle: "Quit \(name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+    return menu
+}
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
@@ -14,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private lazy var caretOverlay = CaretOverlay(tracker: tracker)
     private var markdownShortcuts: MarkdownShortcuts?
     private var vim: VimController?
+    private var formatToolbar: FormatToolbar?
     private var slashCommands: SlashCommands?
     private var indexService: IndexService?
     private let embeddingItem = NSMenuItem()
@@ -29,8 +47,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         toggles: toggles, title: "Copy as Markdown shortcut", id: 2, keyPath: \.copyMarkdownShortcut) { CopyNoteAction.markdown() }
     private lazy var copyLinkShortcut = ShortcutController(
         toggles: toggles, title: "Copy Deeplink shortcut", id: 3, keyPath: \.copyLinkShortcut) { CopyNoteAction.link() }
+    private lazy var dailyNoteShortcut = ShortcutController(
+        toggles: toggles, title: "Today's note shortcut", id: 4, keyPath: \.dailyNoteShortcut) { [weak self] in
+        guard let self else { return }
+        DailyNoteAction.open(templateFolder: toggles.templateFolder)
+    }
     private var aiAssistant: AIAssistant?
     private var actionButton: ActionButton?
+    private lazy var appendPanel = AppendPanel(toggles: toggles)
+    private lazy var appendShortcut = ShortcutController(
+        toggles: toggles, title: "Append to Inbox shortcut", id: 5, keyPath: \.appendShortcut) { [weak self] in self?.appendPanel.show() }
+    private var cancellables: Set<AnyCancellable> = []
+
+    private var productName: String { ProductInfo.main?.name ?? ProcessInfo.processInfo.processName }
+    private var productVersion: String { ProductInfo.main?.version ?? "0" }
 
     /// An accessory app has no menu bar, so the standard editing shortcuts need an Edit menu to reach a text field.
     private func installEditMenu() {
@@ -51,25 +81,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installEditMenu()
-        let name = ProductInfo.main?.name ?? ProcessInfo.processInfo.processName
+        let name = productName
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.image = NSImage(systemSymbolName: "note.text", accessibilityDescription: name)
-        let menu = NSMenu()
-        menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
-        let overlayItem = menu.addItem(withTitle: "Show Caret Overlay", action: #selector(toggleCaretOverlay(_:)), keyEquivalent: "")
-        overlayItem.target = self
-        menu.addItem(withTitle: "Show Vim Latency", action: #selector(toggleVimLatency(_:)), keyEquivalent: "").target = self
-        embeddingItem.isEnabled = false
-        embeddingItem.isHidden = true
-        menu.addItem(embeddingItem)
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Quit \(name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        item.menu = menu
+        item.menu = makeStatusMenu(
+            name: name, version: productVersion, embeddingItem: embeddingItem, target: self,
+            showSettings: #selector(showSettings), checkForUpdates: #selector(checkForUpdates))
         statusItem = item
         ai.config = AISettings.savedConfig()
         markdownShortcuts = MarkdownShortcuts(tracker: tracker, toggles: toggles)
         vim = VimController(tracker: tracker, toggles: toggles)
+        formatToolbar = FormatToolbar(tracker: tracker, toggles: toggles)
+        toggles.$showCaretOverlay.sink { [weak self] on in
+            MainActor.assumeIsolated { self?.caretOverlay.set(on) }
+        }.store(in: &cancellables)
         let slash = SlashCommands(tracker: tracker, toggles: toggles)
         slashCommands = slash
         aiAssistant = AIAssistant(
@@ -94,14 +119,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             service.start()
             indexService = service
             if toggles.embeddingModel == .e5Small { installModel() }
-            searchPanel = SearchPanel(indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier)) { [weak self] in
+            searchPanel = SearchPanel(toggles: toggles, indexURL: SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier)) { [weak self] in
                 guard let self, toggles.ragEnabled, toggles.semanticPanelSearch else { return nil }
                 return panelEmbedder
             }
             backlinksPanel = BacklinksPanel(indexURL: indexURL)
             startWriteServer(bundleIdentifier: bundleIdentifier)
         }
-        _ = (searchShortcut, copyMarkdownShortcut, copyLinkShortcut)
+        _ = (searchShortcut, copyMarkdownShortcut, copyLinkShortcut, dailyNoteShortcut, appendShortcut)
 
         Task {
             await status.refresh()
@@ -122,6 +147,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for case let action? in urls.map(TabieumURL.parse) {
+            switch action {
+            case .search(let query): searchPanel?.show(query: query)
+            case .open(let id): NSWorkspace.shared.open(NoteLink(identifier: id).url)
+            case .append(let text): appendPanel.show(text: text)
+            }
+        }
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         writeServer?.stop()
     }
@@ -130,7 +165,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let created = settingsWindow == nil
         let window = settingsWindow ?? makeWindow(title: "Settings", view: SettingsView(
             status: status, toggles: toggles, ai: ai, embedding: embedding, install: modelInstall,
-            shortcuts: [searchShortcut, copyMarkdownShortcut, copyLinkShortcut],
+            shortcuts: [searchShortcut, copyMarkdownShortcut, copyLinkShortcut, dailyNoteShortcut, appendShortcut],
+            productName: productName, version: productVersion, checkForUpdates: { [weak self] in self?.checkForUpdates() },
             showOnboarding: { [weak self] in self?.showOnboarding() }, setRAG: { [weak self] in self?.setRAG($0) },
             chooseModel: { [weak self] in self?.chooseModel($0) }, retryInstall: { [weak self] in self?.installModel() }))
         window.styleMask.insert(.resizable)
@@ -242,23 +278,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         Task { await UpdateAction.run() }
     }
 
-    @objc private func toggleVimLatency(_ sender: NSMenuItem) {
-        guard let vim else { return }
-        vim.showsLatency.toggle()
-        sender.state = vim.showsLatency ? .on : .off
-    }
+}
 
-    @objc private func toggleCaretOverlay(_ sender: NSMenuItem) {
-        caretOverlay.toggle()
-        sender.state = caretOverlay.isOn ? .on : .off
-    }
+if CommandLine.arguments.dropFirst().first == "search" {
+    let info = ProductInfo.main
+    let result = SearchCommand.run(
+        arguments: Array(CommandLine.arguments.dropFirst(2)),
+        serverName: info?.name ?? "tabieum",
+        indexURL: SearchIndex.defaultURL(bundleIdentifier: info?.bundleIdentifier ?? "dev.juhyeonni.tabieum"))
+    print(result.output)
+    exit(result.exitCode)
 }
 
 if CommandLine.arguments.contains("--mcp") {
     let info = ProductInfo.main
     MCPServer(
         serverName: info?.name ?? "tabieum",
-        version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0",
+        version: info?.version ?? "0",
         indexURL: SearchIndex.defaultURL(bundleIdentifier: info?.bundleIdentifier ?? "dev.juhyeonni.tabieum"),
         isEnabled: { UserDefaults.standard.bool(forKey: "mcpEnabled") },
         ragEnabled: { UserDefaults.standard.bool(forKey: "ragEnabled") },

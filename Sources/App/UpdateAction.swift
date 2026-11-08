@@ -5,7 +5,7 @@ import NotesCore
 @MainActor
 enum UpdateAction {
     static func run() async {
-        let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        let current = ProductInfo.main?.version ?? "0"
         let name = ProductInfo.main?.name ?? "This app"
         guard let url = ProductInfo.main?.repository.flatMap(UpdateCheck.endpoint(repository:)) else {
             return show("Couldn't check for updates", "The release location is not set in this build.")

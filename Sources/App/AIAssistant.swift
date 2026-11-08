@@ -13,7 +13,7 @@ final class AIAssistant {
     private lazy var panel = AIPanel(
         run: { [weak self] in self?.run($0, instruction: $1, withContext: $2) },
         ask: { [weak self] in self?.ask($0) },
-        accept: { [weak self] in self?.accept() },
+        accept: { [weak self] in self?.accept(below: $0) },
         allow: { [weak self] in self?.allow() },
         copy: { [weak self] in self?.copy() },
         cancel: { [weak self] in self?.cancel() })
@@ -123,8 +123,9 @@ final class AIAssistant {
                 for try await piece in aiResult(provider: provider, action: action, selection: selection, instruction: instruction, context: context.text) {
                     guard !Task.isCancelled, let self else { return }
                     result += piece
-                    let shown = strippingThinkBlock(result)
-                    panel.render(.streaming(shown.drop { $0.isWhitespace }.hasPrefix("<think>") ? "Thinking…" : shown))
+                    let shown = action.tagsOutput ? aiStreamingText(result) : strippingThinkBlock(result)
+                    let thinking = strippingThinkBlock(result).drop { $0.isWhitespace }.hasPrefix("<think>")
+                    panel.render(.streaming(thinking ? "Thinking…" : shown))
                 }
                 try Task.checkCancellation()
                 self?.finish()
@@ -137,12 +138,16 @@ final class AIAssistant {
         if task == nil { panel.render(.failed("Set a base URL and chat model in Settings.")) }
     }
 
-    private var finalText: String {
-        strippingThinkBlock(result).trimmingCharacters(in: .whitespacesAndNewlines)
+    private var output: (kind: AIOutputKind, text: String) {
+        let parsed = action.tagsOutput ? aiOutput(result) : (.note, strippingThinkBlock(result))
+        return (parsed.kind, parsed.text.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
+    private var finalText: String { output.text }
+
     private func finish() {
-        panel.render(finalText.isEmpty ? .failed("The model returned nothing.") : .done(finalText))
+        let output = output
+        panel.render(output.text.isEmpty ? .failed("The model returned nothing.") : .done(output.text, output.kind))
     }
 
     private func fail(_ error: Error) {
@@ -181,7 +186,7 @@ final class AIAssistant {
         panel.dismiss()
     }
 
-    private func accept() {
+    private func accept(below: Bool) {
         guard !finalText.isEmpty, let snapshot, let pid = NotesControl.pid else { return }
         let text = finalText
         panel.dismiss()
@@ -199,7 +204,7 @@ final class AIAssistant {
                 panel.show(nil, at: caret)
                 return
             }
-            if action == .summarize {
+            if below || action == .summarize {
                 tracker.setSelectedRange(NSRange(location: NSMaxRange(snapshot.selection), length: 0))
                 NotesControl.paste(plain: "\n" + text, to: pid)
             } else {
@@ -216,7 +221,7 @@ final class AIPanel: NSPanel, NSTextFieldDelegate {
     enum Phase {
         case input(hasSelection: Bool, chip: String?, canAsk: Bool)
         case streaming(String)
-        case done(String)
+        case done(String, AIOutputKind)
         case answer(String)
         case failed(String)
         case consent(String)
@@ -238,12 +243,12 @@ final class AIPanel: NSPanel, NSTextFieldDelegate {
     private var dismissing = false
     private let onRun: (AIAction, String, Bool) -> Void
     private let onAsk: (String) -> Void
-    private let onAccept: () -> Void
+    private let onAccept: (_ below: Bool) -> Void
     private let onAllow: () -> Void
     private let onCopy: () -> Void
     private let onCancel: () -> Void
 
-    init(run: @escaping (AIAction, String, Bool) -> Void, ask: @escaping (String) -> Void, accept: @escaping () -> Void, allow: @escaping () -> Void,
+    init(run: @escaping (AIAction, String, Bool) -> Void, ask: @escaping (String) -> Void, accept: @escaping (_ below: Bool) -> Void, allow: @escaping () -> Void,
          copy: @escaping () -> Void, cancel: @escaping () -> Void) {
         onRun = run
         onAsk = ask
@@ -344,9 +349,12 @@ final class AIPanel: NSPanel, NSTextFieldDelegate {
         case let .streaming(shown):
             text = shown
             message = "Writing… Esc to cancel."
-        case let .done(shown):
+        case let .done(shown, kind):
             text = shown
-            message = "Return to insert, Esc to discard."
+            message = kind == .reply
+                ? "Return to copy, ⌥Return to insert below, Esc to close."
+                : "Return to insert, ⌥Return to insert below, Esc to discard."
+            extraTitle = "Copy"
         case let .answer(shown):
             text = shown
             message = "Return or Copy to copy the answer, Esc to close."
@@ -385,7 +393,14 @@ final class AIPanel: NSPanel, NSTextFieldDelegate {
     override func keyDown(with event: NSEvent) {
         switch (event.keyCode, phase) {
         case (53, _): onCancel()
-        case (36, .done), (76, .done): onAccept()
+        case let (36, .done(_, kind)), let (76, .done(_, kind)):
+            if event.modifierFlags.contains(.option) {
+                onAccept(true)
+            } else if kind == .reply {
+                onCopy()
+            } else {
+                onAccept(false)
+            }
         case (36, .answer), (76, .answer): onCopy()
         case (36, .consent), (76, .consent): onAllow()
         default: break

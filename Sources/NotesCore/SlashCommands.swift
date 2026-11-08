@@ -32,6 +32,9 @@ public struct SlashItem: Equatable, Sendable {
         case style(NotesStyle)
         /// An index into `SlashCommandRegistry.commands`.
         case command(Int)
+        /// Text to paste in place of the `/query`.
+        case insert(String)
+        case table(columns: Int, rows: Int)
     }
 
     public var title: String
@@ -46,7 +49,7 @@ public struct SlashItem: Equatable, Sendable {
         switch action {
         case .template: .templates
         case .style: .styles
-        case .command: .commands
+        case .command, .insert, .table: .commands
         }
     }
 
@@ -57,12 +60,76 @@ public struct SlashItem: Equatable, Sendable {
     }
 
     public static let builtIns = NotesStyle.allCases.map { SlashItem(title: $0.displayName, action: .style($0)) }
+
+    public static let table = SlashItem(title: "Table", action: .table(columns: 3, rows: 3))
+}
+
+/// The size in a `table<columns>x<rows>` query: up to 10 columns by 20 rows.
+public func tableSize(query: String) -> (columns: Int, rows: Int)? {
+    let parts = query.lowercased().split(separator: "x", omittingEmptySubsequences: false)
+    guard parts.count == 2, parts[0].hasPrefix("table") else { return nil }
+    let numbers = [parts[0].dropFirst(5), parts[1]]
+    guard numbers.allSatisfy({ !$0.isEmpty && $0.allSatisfy { $0.isASCII && $0.isNumber } }),
+          let columns = Int(numbers[0]), let rows = Int(numbers[1]),
+          (1...10).contains(columns), (1...20).contains(rows)
+    else { return nil }
+    return (columns, rows)
+}
+
+/// A table of empty cells as Notes HTML.
+public func tableHTML(columns: Int, rows: Int) -> String {
+    let row = "<tr>" + String(repeating: "<td></td>", count: columns) + "</tr>"
+    return "<table>" + String(repeating: row, count: rows) + "</table>"
+}
+
+/// A table of empty cells as tab-separated plain text.
+public func tablePlainText(columns: Int, rows: Int) -> String {
+    String(repeating: String(repeating: "\t", count: columns - 1) + "\n", count: rows)
+}
+
+private func isoText(daysFrom offset: Int, time: String?, now: Date, calendar: Calendar) -> String {
+    let day = calendar.date(byAdding: .day, value: offset, to: now) ?? now
+    let parts = calendar.dateComponents([.year, .month, .day], from: day)
+    let date = String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    return time.map { "\(date) \($0)" } ?? date
+}
+
+private let dateWords: [(word: String, title: String, offset: Int)] = [
+    ("today", "Today", 0), ("tomorrow", "Tomorrow", 1), ("yesterday", "Yesterday", -1),
+]
+
+extension SlashItem {
+    /// Today, Tomorrow, Yesterday as `YYYY-MM-DD` and Now as `YYYY-MM-DD HH:mm`, in `calendar`'s time zone.
+    public static func dates(now: Date, calendar: Calendar = .current) -> [SlashItem] {
+        let days = dateWords.map {
+            SlashItem(title: $0.title, action: .insert(isoText(daysFrom: $0.offset, time: nil, now: now, calendar: calendar)))
+        }
+        let time = String(format: "%02d:%02d", calendar.component(.hour, from: now), calendar.component(.minute, from: now))
+        return days + [SlashItem(title: "Now", action: .insert(isoText(daysFrom: 0, time: time, now: now, calendar: calendar)))]
+    }
+
+    /// The one item for a query like `today1010`: a date word and exactly four digits `HHmm`; nil for any other shape.
+    public static func timedDate(query: String, now: Date, calendar: Calendar = .current) -> SlashItem? {
+        let query = query.lowercased()
+        guard let entry = dateWords.first(where: { query.hasPrefix($0.word) }) else { return nil }
+        let digits = query.dropFirst(entry.word.count)
+        guard digits.count == 4, digits.allSatisfy({ $0.isASCII && $0.isNumber }),
+              let hour = Int(digits.prefix(2)), let minute = Int(digits.suffix(2)), hour < 24, minute < 60
+        else { return nil }
+        let time = String(format: "%02d:%02d", hour, minute)
+        return SlashItem(title: "\(entry.title) \(time)",
+                         action: .insert(isoText(daysFrom: entry.offset, time: time, now: now, calendar: calendar)))
+    }
 }
 
 /// Case-insensitive, canonically equivalent substring match on the title; prefix matches first, otherwise source order.
 public func filterSlashItems(_ items: [SlashItem], query: String) -> [SlashItem] {
     let query = query.precomposedStringWithCanonicalMapping
     guard !query.isEmpty else { return items }
+    if let size = tableSize(query: query) {
+        return [SlashItem(title: "Table \(size.columns)×\(size.rows)", action: .table(columns: size.columns, rows: size.rows))]
+    }
+    if query.lowercased().wholeMatch(of: /table(\d{1,2}x?)?/) != nil { return items.filter { $0 == .table } }
     var prefixed: [SlashItem] = []
     var contained: [SlashItem] = []
     for item in items {
@@ -88,6 +155,14 @@ public func groupSlashItems(_ items: [SlashItem]) -> [(section: SlashSection, it
 /// The menu stays open for the empty query and for any query that matches an item.
 public func slashMenuStaysOpen(_ items: [SlashItem], query: String) -> Bool {
     !filterSlashItems(items, query: query).isEmpty
+}
+
+/// True while `query` is a date word followed by up to four digits, the half-typed shapes of `today1010` that match no item yet.
+public func isTimedDateInProgress(query: String) -> Bool {
+    let query = query.lowercased()
+    guard let entry = dateWords.first(where: { query.hasPrefix($0.word) }) else { return false }
+    let digits = query.dropFirst(entry.word.count)
+    return digits.count <= 4 && digits.allSatisfy { $0.isASCII && $0.isNumber }
 }
 
 /// Commands other features add to the `/` panel, each listed only while its condition holds.

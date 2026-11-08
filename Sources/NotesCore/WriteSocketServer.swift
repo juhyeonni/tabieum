@@ -39,6 +39,7 @@ public final class WriteSocketServer: @unchecked Sendable {
             throw Failure.socket(reason)
         }
         lock.withLock { listener = descriptor }
+        signal(SIGPIPE, SIG_IGN)
         Thread.detachNewThread { [self] in accept(on: descriptor) }
     }
 

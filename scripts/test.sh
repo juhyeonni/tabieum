@@ -13,7 +13,7 @@ case "$developer_dir" in
         -Xlinker -F"$lib/Frameworks" \
         -Xlinker -rpath -Xlinker "$lib/Frameworks" \
         -Xlinker -rpath -Xlinker "$lib/usr/lib" \
-        "$@"
+        --no-parallel "$@"
     ;;
 esac
-exec swift test "$@"
+exec swift test --no-parallel "$@"

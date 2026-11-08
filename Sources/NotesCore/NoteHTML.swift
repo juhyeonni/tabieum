@@ -24,6 +24,10 @@ public enum NoteHTML {
                 flushParagraph()
                 flushList()
                 out += "<h\(level)>\(inline(text))</h\(level)>"
+            } else if let (box, text) = task(line) {
+                flushParagraph()
+                flushList()
+                out += "<div>\(box) \(inline(text))</div>"
             } else if let (tag, text) = item(line) {
                 flushParagraph()
                 if list?.tag != tag {
@@ -44,10 +48,31 @@ public enum NoteHTML {
         return out
     }
 
+    /// One line of plain text as a note line; `<` and `&` stay literal.
+    public static func line(_ text: String) -> String {
+        "<div>" + escaped(text).replacingOccurrences(of: "\n", with: "<br>") + "</div>"
+    }
+
+    public static func titleLine(_ text: String) -> String {
+        "<div><h1>" + escaped(text) + "</h1></div>"
+    }
+
     private static func heading(_ line: String) -> (Int, String)? {
         let hashes = line.prefix(while: { $0 == "#" }).count
         guard (1...3).contains(hashes), line.dropFirst(hashes).first == " " else { return nil }
         return (hashes, String(line.dropFirst(hashes + 1)))
+    }
+
+    /// Notes cannot be handed a real checklist, so a task item becomes a line starting with a box character.
+    private static func task(_ line: String) -> (String, String)? {
+        guard line.hasPrefix("- [") || line.hasPrefix("* [") else { return nil }
+        let rest = line.dropFirst(3)
+        guard rest.dropFirst().first == "]",rest.dropFirst(2).first == " " else { return nil }
+        switch rest.first {
+        case " ": return ("☐", String(rest.dropFirst(3)))
+        case "x", "X": return ("☑", String(rest.dropFirst(3)))
+        default: return nil
+        }
     }
 
     private static func item(_ line: String) -> (String, String)? {

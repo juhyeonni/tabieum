@@ -14,7 +14,14 @@ public final class FeatureToggles: ObservableObject {
     @Published public var embeddingModel: EmbeddingModel { didSet { defaults.set(embeddingModel.rawValue, forKey: EmbeddingModel.defaultsKey) } }
     @Published public var mcpEnabled: Bool { didSet { defaults.set(mcpEnabled, forKey: "mcpEnabled") } }
     @Published public var aiEnabled: Bool { didSet { defaults.set(aiEnabled, forKey: "aiEnabled") } }
+    /// Searches saved from the search panel, in the order they were saved.
+    @Published public var savedSearches: [SavedSearch] {
+        didSet { defaults.set(try? JSONEncoder().encode(savedSearches), forKey: "savedSearches") }
+    }
     @Published public var write: WriteSettings { didSet { write.save(to: defaults) } }
+    @Published public var formatToolbarEnabled: Bool { didSet { defaults.set(formatToolbarEnabled, forKey: "formatToolbarEnabled") } }
+    @Published public var showCaretOverlay: Bool { didSet { defaults.set(showCaretOverlay, forKey: "showCaretOverlay") } }
+    @Published public var showVimLatency: Bool { didSet { defaults.set(showVimLatency, forKey: "showVimLatency") } }
     @Published public var aiShortcut: HotKey {
         didSet {
             defaults.set(Int(aiShortcut.keyCode), forKey: "aiShortcutKeyCode")
@@ -32,6 +39,9 @@ public final class FeatureToggles: ObservableObject {
     /// The folder, in every account, whose notes the `/` panel lists as templates.
     @Published public var templateFolder: String { didSet { defaults.set(templateFolder, forKey: "templateFolder") } }
 
+    /// The title of the note the append shortcut adds lines to.
+    @Published public var inboxTitle: String { didSet { defaults.set(inboxTitle, forKey: "inboxTitle") } }
+
     /// The global shortcut that opens the search panel.
     public var searchShortcut: Shortcut {
         get { shortcut("searchShortcut", fallback: .default) }
@@ -46,6 +56,16 @@ public final class FeatureToggles: ObservableObject {
     public var copyLinkShortcut: Shortcut {
         get { shortcut("copyLinkShortcut", fallback: .copyLink) }
         set { setShortcut("copyLinkShortcut", newValue) }
+    }
+
+    public var dailyNoteShortcut: Shortcut {
+        get { shortcut("dailyNoteShortcut", fallback: .dailyNote) }
+        set { setShortcut("dailyNoteShortcut", newValue) }
+    }
+
+    public var appendShortcut: Shortcut {
+        get { shortcut("appendShortcut", fallback: .append) }
+        set { setShortcut("appendShortcut", newValue) }
     }
 
     private func shortcut(_ name: String, fallback: Shortcut) -> Shortcut {
@@ -64,6 +84,7 @@ public final class FeatureToggles: ObservableObject {
     public init(defaults: UserDefaults = .standard, e5Available: Bool = EmbeddingModel.e5Available) {
         self.defaults = defaults
         templateFolder = defaults.string(forKey: "templateFolder") ?? "Templates"
+        inboxTitle = defaults.string(forKey: "inboxTitle") ?? "Inbox"
         vimEnabled = defaults.bool(forKey: "vimEnabled")
         vimJKEnabled = defaults.bool(forKey: "vimJKEnabled")
         vimCursorShape = defaults.string(forKey: "vimCursorShape").flatMap(VimCursorSetting.init(rawValue:)) ?? .modeBased
@@ -73,6 +94,10 @@ public final class FeatureToggles: ObservableObject {
         mcpEnabled = defaults.bool(forKey: "mcpEnabled")
         aiEnabled = defaults.bool(forKey: "aiEnabled")
         write = WriteSettings(defaults: defaults)
+        formatToolbarEnabled = defaults.bool(forKey: "formatToolbarEnabled")
+        savedSearches = defaults.data(forKey: "savedSearches").flatMap { try? JSONDecoder().decode([SavedSearch].self, from: $0) } ?? []
+        showCaretOverlay = defaults.bool(forKey: "showCaretOverlay")
+        showVimLatency = defaults.bool(forKey: "showVimLatency")
         let stored = HotKey(keyCode: UInt16(defaults.integer(forKey: "aiShortcutKeyCode")),
                             modifiers: CGEventFlags(rawValue: UInt64(defaults.integer(forKey: "aiShortcutModifiers"))),
                             key: defaults.string(forKey: "aiShortcutKey") ?? "")

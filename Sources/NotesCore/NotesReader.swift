@@ -236,6 +236,12 @@ public final class NotesReader {
         }.first ?? nil
     }
 
+    /// The identifier of the note with this Core Data ID (`x-coredata://<store>/ICNote/p123`), or nil when the database has none.
+    public func noteIdentifier(coreDataID: String) throws -> String? {
+        guard let key = CurrentNote.key(coreDataID: coreDataID) else { return nil }
+        return try noteIdentifier(key: key)
+    }
+
     /// The database key (Z_PK) of the note with this identifier, or nil when there is none.
     public func noteKey(identifier: String) throws -> Int? {
         let quoted = "'" + identifier.replacingOccurrences(of: "'", with: "''") + "'"

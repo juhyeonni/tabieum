@@ -37,16 +37,29 @@ struct AppleScriptNotesWriter: NoteWriter {
         }
     }
 
-    func createNote(title: String?, html: String, in target: NoteTarget) async throws {
+    func createNote(title: String?, html: String, in target: NoteTarget) async throws -> CreatedNote {
         let heading = title?.replacing("&", with: "&amp;").replacing("<", with: "&lt;").replacing(">", with: "&gt;")
         let body = heading.map { "<div><h1>\($0)</h1></div>" + html } ?? html
-        let handle = try await Self.run("""
+        let created = try await Self.run("""
         tell application "Notes"
             set created to make new note at \(Self.folder(target)) with properties {body:\(Self.quoted(body))}
-            return id of created
+            return {id of created, name of created, modification date of created}
         end tell
-        """).text
+        """).items
+        guard created.count == 3 else { throw WriteFailure.failed("Notes did not report the new note.") }
+        let handle = created[0].text
         if !handle.isEmpty { CreatedNoteLog().record(handle) }
+        return CreatedNote(
+            id: await Self.identifier(of: handle), title: created[1].text, folder: target.folder, modified: created[2].date)
+    }
+
+    /// The database may lag behind Notes by a moment, so look a few times before giving up.
+    private static func identifier(of handle: String) async -> String? {
+        for attempt in 0..<5 {
+            if attempt > 0 { try? await Task.sleep(for: .milliseconds(200)) }
+            if let id = try? NotesReader().noteIdentifier(coreDataID: handle) { return id }
+        }
+        return nil
     }
 
     func resolveNote(identifier: String, scope: WriteScope, target: NoteTarget) async throws -> ResolvedNote? {
@@ -102,13 +115,13 @@ struct AppleScriptNotesWriter: NoteWriter {
         "folder \(quoted(target.folder)) of account \(quoted(target.account))"
     }
 
-    private static func quoted(_ string: String) -> String {
+    static func quoted(_ string: String) -> String {
         "\"" + string.replacing("\\", with: "\\\\").replacing("\"", with: "\\\"") + "\""
     }
 
     /// NSAppleScript runs on the main thread, like the rest of the app's scripts.
     @MainActor
-    private static func run(_ source: String) throws -> ScriptValue {
+    static func run(_ source: String) throws -> ScriptValue {
         var error: NSDictionary?
         let result = NSAppleScript(source: source)?.executeAndReturnError(&error)
         if let error {
@@ -119,6 +132,25 @@ struct AppleScriptNotesWriter: NoteWriter {
         }
         guard let result else { throw WriteFailure.failed("The script could not be compiled.") }
         return ScriptValue(result)
+    }
+}
+
+extension AppleScriptNotesWriter: InboxWriter {
+    func append(html: String, toNoteTitled title: String) async throws -> Bool {
+        try await Self.run("""
+        tell application "Notes"
+            set found to notes whose name is \(Self.quoted(title))
+            if (count of found) is 0 then return false
+            set n to item 1 of found
+            set body of n to (body of n) & \(Self.quoted(html))
+            return true
+        end tell
+        """).flag
+    }
+
+    func createNote(titled title: String, html: String) async throws {
+        let body = Self.quoted(NoteHTML.titleLine(title) + html)
+        _ = try await Self.run("tell application \"Notes\" to make new note with properties {body:\(body)}")
     }
 }
 

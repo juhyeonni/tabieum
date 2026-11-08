@@ -22,9 +22,10 @@ extension SearchIndex {
         log: (String) -> Void = { _ in },
         embedder: (() -> Embedder)? = nil,
         shouldPause: () -> Bool = { ProcessInfo.processInfo.isLowPowerModeEnabled },
-        progress: (EmbeddingProgress) -> Void = { _ in }
+        progress: (EmbeddingProgress) -> Void = { _ in },
+        didSyncNotes: (Int) -> Void = { _ in }
     ) throws -> EmbedOutcome? {
-        try syncNotes(from: source, decode: decode, linkRefs: linkRefs, log: log)
+        didSyncNotes(try syncNotes(from: source, decode: decode, linkRefs: linkRefs, log: log))
         guard let embedder else {
             try clearChunks()
             return nil
@@ -34,18 +35,20 @@ extension SearchIndex {
 
     /// Decodes and upserts only new or changed notes, and deletes notes the source no longer lists.
     /// A body that fails to decode is indexed by title only. `linkRefs` lists the note links in a body.
+    /// Returns how many notes it indexed.
+    @discardableResult
     func syncNotes(
         from source: NoteSource,
         decode: (Data) throws -> String,
         linkRefs: (Data) -> [NoteLinkRef],
         log: (String) -> Void
-    ) throws {
+    ) throws -> Int {
         let stamps = try source.noteStamps()
         let known = try modifiedDates()
         let listed = Set(stamps.map(\.id))
         let changed = stamps.filter { known[$0.id] != $0.modified.timeIntervalSinceReferenceDate }.map(\.id)
         try remove(known.keys.filter { !listed.contains($0) })
-        guard !changed.isEmpty else { return }
+        guard !changed.isEmpty else { return 0 }
 
         let folders = Dictionary(try source.folders().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         for start in stride(from: 0, to: changed.count, by: 200) {
@@ -76,6 +79,7 @@ extension SearchIndex {
                                    links: links.subtracting([note.id.uppercased()]).sorted())
             })
         }
+        return changed.count
     }
 }
 
@@ -111,6 +115,18 @@ public final class NoteStoreWatcher: @unchecked Sendable {
         watchedFiles.contains(URL(fileURLWithPath: path).lastPathComponent)
     }
 
+    private static let lostEvents = FSEventStreamEventFlags(
+        kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagUserDropped
+            | kFSEventStreamEventFlagKernelDropped | kFSEventStreamEventFlagRootChanged)
+
+    /// Whether a batch of events may hold a change to the database. Dropped or coalesced events and directory events name no file, so a
+    /// path filter alone would skip them and the index would go stale.
+    static func shouldSync(_ events: [(path: String, flags: FSEventStreamEventFlags)]) -> Bool {
+        events.contains {
+            isRelevant($0.path) || $0.flags & lostEvents != 0 || $0.flags & FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsDir) != 0
+        }
+    }
+
     private let directory: String
     private let onChange: @Sendable () -> Void
     private var stream: FSEventStreamRef?
@@ -124,11 +140,12 @@ public final class NoteStoreWatcher: @unchecked Sendable {
         guard stream == nil else { return }
         var context = FSEventStreamContext(
             version: 0, info: Unmanaged.passUnretained(self).toOpaque(), retain: nil, release: nil, copyDescription: nil)
-        let callback: FSEventStreamCallback = { _, info, count, paths, _, _ in
+        let callback: FSEventStreamCallback = { _, info, count, paths, flags, _ in
             guard let info else { return }
             let watcher = Unmanaged<NoteStoreWatcher>.fromOpaque(info).takeUnretainedValue()
             let changed = unsafeBitCast(paths, to: NSArray.self) as? [String] ?? []
-            if changed.prefix(count).contains(where: NoteStoreWatcher.isRelevant) { watcher.onChange() }
+            let events = zip(changed.prefix(count), UnsafeBufferPointer(start: flags, count: count)).map { ($0, $1) }
+            if NoteStoreWatcher.shouldSync(events) { watcher.onChange() }
         }
         let flags = UInt32(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes)
         guard let stream = FSEventStreamCreate(
@@ -152,7 +169,19 @@ public final class NoteStoreWatcher: @unchecked Sendable {
     }
 }
 
-/// Keeps the search index in step with Notes: one sync at launch, then one per batch of database file events.
+/// Runs `action` every `interval` until cancelled. A run that is still going delays the next tick instead of overlapping it.
+func repeating(every interval: Duration, _ action: @escaping @Sendable () async -> Void) -> Task<Void, Never> {
+    Task {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: interval)
+            guard !Task.isCancelled else { return }
+            await action()
+        }
+    }
+}
+
+/// Keeps the search index in step with Notes: one sync at launch, one per batch of database file events, and one per interval
+/// in case the file events stop arriving.
 public final class IndexService: @unchecked Sendable {
     private static let logger = Logger(subsystem: "NotesCore", category: "IndexService")
 
@@ -163,6 +192,9 @@ public final class IndexService: @unchecked Sendable {
     private let coalescer: SyncCoalescer
     private let watcher: NoteStoreWatcher
     private let hook = Hook()
+    private let syncInterval: Duration
+    private let byTimer: OSAllocatedUnfairLock<Bool>
+    private var tick: Task<Void, Never>?
 
     /// `onProgress` gets nil when nothing is being embedded. While RAG is off nothing is embedded and the embedder is never created.
     public init(
@@ -170,11 +202,21 @@ public final class IndexService: @unchecked Sendable {
         notesDatabaseURL: URL = NotesReader.defaultDatabaseURL,
         ragEnabled: @escaping @Sendable () -> Bool = { false },
         makeEmbedder: @escaping @Sendable () -> Embedder = { ConfiguredEmbedder() },
-        onProgress: @escaping @Sendable (EmbeddingProgress?) -> Void = { _ in }
+        onProgress: @escaping @Sendable (EmbeddingProgress?) -> Void = { _ in },
+        syncInterval: Duration = .seconds(60)
     ) {
+        self.syncInterval = syncInterval
+        let byTimer = OSAllocatedUnfairLock(initialState: false)
+        self.byTimer = byTimer
         let hook = hook
         let cached = OSAllocatedUnfairLock<Embedder?>(initialState: nil)
         coalescer = SyncCoalescer {
+            // ponytail: a note made just before a tick can be logged as missed; add a recency check if that is noisy
+            let startedByTimer = byTimer.withLock { flag in
+                defer { flag = false }
+                return flag
+            }
+            Self.logger.info("sync started")
             let outcome = await Task.detached(priority: .background) { () -> EmbedOutcome? in
                 do {
                     let index = try SearchIndex(url: indexURL)
@@ -190,12 +232,17 @@ public final class IndexService: @unchecked Sendable {
                     if embedder == nil { cached.withLock { $0 = nil } }
                     return try index.sync(
                         from: reader, log: { Self.logger.error("\($0, privacy: .public)") },
-                        embedder: embedder, progress: { onProgress($0) })
+                        embedder: embedder, progress: { onProgress($0) },
+                        didSyncNotes: { count in
+                            guard startedByTimer, count > 0 else { return }
+                            Self.logger.error("the timer indexed \(count) notes that the file watcher did not report")
+                        })
                 } catch {
                     Self.logger.error("cannot sync the search index: \(String(describing: error), privacy: .public)")
                     return nil
                 }
             }.value
+            Self.logger.info("sync ended")
             if outcome == nil || outcome == .finished { onProgress(nil) }
             guard outcome == .waitingForModel else { return }
             Task {
@@ -213,6 +260,12 @@ public final class IndexService: @unchecked Sendable {
     public func start() {
         watcher.start()
         requestSync()
+        let coalescer = coalescer
+        let byTimer = byTimer
+        tick = repeating(every: syncInterval) {
+            byTimer.withLock { $0 = true }
+            await coalescer.request()
+        }
         let hook = hook
         NotificationCenter.default.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: nil) { _ in
             hook.action?()
@@ -221,5 +274,9 @@ public final class IndexService: @unchecked Sendable {
 
     public func requestSync() {
         hook.action?()
+    }
+
+    deinit {
+        tick?.cancel()
     }
 }

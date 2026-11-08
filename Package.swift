@@ -18,5 +18,6 @@ let package = Package(
         .executableTarget(name: "notes-export", dependencies: ["NotesCore"], path: "Sources/NotesExport"),
         .testTarget(name: "NotesCoreTests", dependencies: ["NotesCore"], exclude: ["Fixtures"]),
         .testTarget(name: "NotesAITests", dependencies: ["NotesAI", "NotesCore"]),
+        .testTarget(name: "AppTests", dependencies: ["App", "NotesCore", "NotesAI"]),
     ]
 )

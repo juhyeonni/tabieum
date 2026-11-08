@@ -69,6 +69,16 @@ func running(_ value: WriteSettings, writer: FakeWriter = FakeWriter(), confirme
     #expect(NoteHTML.html(fromMarkdown: "snake_case_name stays") == "<div>snake_case_name stays</div>")
 }
 
+@Test func taskItemsBecomeBoxLines() {
+    #expect(NoteHTML.html(fromMarkdown: "- [ ] a\n* [ ] b") == "<div>☐ a</div><div>☐ b</div>")
+    #expect(NoteHTML.html(fromMarkdown: "- [x] c\n- [X] d\n* [x] e") == "<div>☑ c</div><div>☑ d</div><div>☑ e</div>")
+}
+
+@Test func taskItemsStayApartFromParagraphsAndBullets() {
+    #expect(NoteHTML.html(fromMarkdown: "intro\n- [ ] **do** <it>\n- plain") == "<div>intro</div><div>☐ <b>do</b> &lt;it&gt;</div><ul><li>plain</li></ul>")
+    #expect(NoteHTML.html(fromMarkdown: "- a\n- [x] b\n- c") == "<ul><li>a</li></ul><div>☑ b</div><ul><li>c</li></ul>")
+}
+
 @Test func rawHTMLIsNeverPassedThrough() {
     #expect(NoteHTML.html(fromMarkdown: "<script>alert(1)</script> & more") == "<div>&lt;script&gt;alert(1)&lt;/script&gt; &amp; more</div>")
     #expect(NoteHTML.html(fromMarkdown: "`<b>x</b>` **<i>y</i>**") == "<div><tt>&lt;b&gt;x&lt;/b&gt;</tt> <b>&lt;i&gt;y&lt;/i&gt;</b></div>")
@@ -85,6 +95,26 @@ func running(_ value: WriteSettings, writer: FakeWriter = FakeWriter(), confirme
     #expect(!reply.isError)
     #expect(writer.calls.count == 1 && writer.calls.first?.title == "Plan")
     #expect(writer.calls.first?.html == "<h1>Hi</h1><ul><li>one</li></ul>")
+    let created = try #require(JSONSerialization.jsonObject(with: Data(reply.text.utf8)) as? [String: Any])
+    #expect(created["id"] as? String == "N-NEW" && created["title"] as? String == "Plan" && created["folder"] as? String == "Agents")
+    #expect(created["modified"] as? String == ISO8601DateFormatter().string(from: writer.createdModified))
+    #expect(created["note"] == nil)
+}
+
+@Test func aCreateBeforeTheDatabaseHasTheNoteStillSucceedsWithoutAnId() throws {
+    let writer = FakeWriter()
+    writer.createdID = nil
+    let live = try running(settings { $0.consent = .always }, writer: writer)
+    defer {
+        live.server.stop()
+        try? FileManager.default.removeItem(at: live.directory)
+    }
+    let reply = try call(mcp(settings { $0.consent = .always }, channel: live.client), #"{"title":"Plan","body":"b"}"#)
+    #expect(!reply.isError)
+    let created = try #require(JSONSerialization.jsonObject(with: Data(reply.text.utf8)) as? [String: Any])
+    #expect(created["id"] == nil && created["title"] as? String == "Plan")
+    #expect((created["note"] as? String)?.contains("not available yet") == true)
+    #expect(writer.calls.count == 1)
 }
 
 @Test func theAppsRefusalIsTheToolError() throws {

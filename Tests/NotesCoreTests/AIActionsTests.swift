@@ -38,6 +38,43 @@ func selectionActionsCarrySelectionVerbatim(action: AIAction) throws {
     #expect(messages[1].content == "write a haiku")
 }
 
+// #148 AC1
+@Test func freeInstructionsAskForAnOutputTag() throws {
+    for action in [AIAction.instruction, .prompt] {
+        let system = try aiMessages(for: action, selection: "text", instruction: "이게 뭔말이야")[0].content
+        #expect(system.contains("exactly [note] or [reply]"))
+    }
+    for action in [AIAction.rewrite, .summarize] {
+        let system = try aiMessages(for: action, selection: "text")[0].content
+        #expect(!system.contains("[note]"))
+        #expect(!system.contains("[reply]"))
+    }
+}
+
+// #148 AC2
+@Test func outputTagIsSplitOff() {
+    #expect(aiOutput("[note]\nHello") == (.note, "Hello"))
+    #expect(aiOutput("[reply]\nIt means X.") == (.reply, "It means X."))
+    #expect(aiOutput("  \n[REPLY]\nIt means X.") == (.reply, "It means X."))
+    #expect(aiOutput("<think>hmm</think>\n[Reply]\nIt means X.") == (.reply, "It means X."))
+}
+
+// #148 AC3
+@Test func untaggedOutputIsNoteText() {
+    #expect(aiOutput("Hello there") == (.note, "Hello there"))
+    #expect(aiOutput("[answer]\nHello") == (.note, "[answer]\nHello"))
+}
+
+// #148 AC4
+@Test func streamingHidesTheTag() {
+    for partial in ["", "[", "[rep", "[reply", "[reply]", "  [No", "<think>x</think>[note"] {
+        #expect(aiStreamingText(partial) == "", "\(partial)")
+    }
+    #expect(aiStreamingText("[reply]\nIt me") == "It me")
+    #expect(aiStreamingText("[1] first") == "[1] first")
+    #expect(aiStreamingText("Hello") == "Hello")
+}
+
 // AC3
 @Test func leadingThinkBlockIsRemoved() {
     #expect(strippingThinkBlock("<think>hmm\nso</think>Hello") == "Hello")

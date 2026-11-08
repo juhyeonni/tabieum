@@ -8,14 +8,17 @@ final class FakeWriter: NoteWriter, @unchecked Sendable {
     private var created: [(title: String?, html: String, target: NoteTarget)] = []
     var folderExists = true
     var failure: WriteFailure?
+    var createdID: String? = "N-NEW"
+    let createdModified = Date(timeIntervalSince1970: 1_800_000_000)
 
     var calls: [(title: String?, html: String, target: NoteTarget)] { lock.withLock { created } }
 
     func folderExists(_ target: NoteTarget) async throws -> Bool { folderExists }
 
-    func createNote(title: String?, html: String, in target: NoteTarget) async throws {
+    func createNote(title: String?, html: String, in target: NoteTarget) async throws -> CreatedNote {
         if let failure { throw failure }
         lock.withLock { created.append((title, html, target)) }
+        return CreatedNote(id: createdID, title: title ?? "Untitled", folder: target.folder, modified: createdModified)
     }
 
     var resolved: ResolvedNote?
@@ -74,7 +77,7 @@ func service(
     _ value: WriteSettings, writer: FakeWriter = FakeWriter(), confirmer: FakeConfirmer = FakeConfirmer(),
     timeout: Duration = .seconds(60)
 ) -> NoteWriteService {
-    NoteWriteService(settings: { value }, writer: writer, confirmer: confirmer, productName: "tabieum", timeout: timeout)
+    NoteWriteService(settings: { value }, writer: writer, confirmer: confirmer, productName: "Tabieum", timeout: timeout)
 }
 
 let createLine = #"{"action":"create","title":"Plan","html":"<div>Ship it</div>"}"#
@@ -185,7 +188,7 @@ private func freshSuite() -> UserDefaults {
     let off = FakeWriter()
     _ = await service(settings { $0.consent = .always; $0.marker = true }, writer: on).handle(createLine, session: WriteSession())
     _ = await service(settings { $0.consent = .always }, writer: off).handle(createLine, session: WriteSession())
-    #expect(on.calls.first?.html.hasSuffix("Created by an AI agent through tabieum.</div>") == true)
+    #expect(on.calls.first?.html.hasSuffix("Created by an AI agent through Tabieum.</div>") == true)
     #expect(off.calls.first?.html == "<div>Ship it</div>")
 }
 
@@ -236,6 +239,11 @@ private final class SocketClient {
 
     deinit { close(descriptor) }
 
+    func sendWithoutWaiting(_ line: String) {
+        let bytes = Array((line + "\n").utf8)
+        write(descriptor, bytes, bytes.count)
+    }
+
     func send(_ line: String) -> String {
         let bytes = Array((line + "\n").utf8)
         write(descriptor, bytes, bytes.count)
@@ -256,6 +264,22 @@ private final class SocketClient {
     }
     let client = try SocketClient(path: url.path)
     #expect(try !parse(client.send("garbage")).ok)
+    #expect(try parse(client.send(createLine)).ok)
+}
+
+@Test func aClientThatHangsUpBeforeTheReplyDoesNotKillTheServer() async throws {
+    let url = shortSocketURL()
+    let server = WriteSocketServer(path: url, service: service(settings { $0.consent = .always }))
+    try server.start()
+    defer {
+        server.stop()
+        try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+    }
+    for _ in 0..<5 {
+        try SocketClient(path: url.path).sendWithoutWaiting(createLine)
+    }
+    try await Task.sleep(for: .milliseconds(300))
+    let client = try SocketClient(path: url.path)
     #expect(try parse(client.send(createLine)).ok)
 }
 

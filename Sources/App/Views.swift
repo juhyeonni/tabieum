@@ -83,6 +83,9 @@ struct SettingsView: View {
     let embedding: EmbeddingState
     let install: ModelInstall
     let shortcuts: [ShortcutController]
+    let productName: String
+    let version: String
+    let checkForUpdates: () -> Void
     let showOnboarding: () -> Void
     let setRAG: (Bool) -> Void
     let chooseModel: (EmbeddingModel) -> Void
@@ -96,6 +99,11 @@ struct SettingsView: View {
                     Button("Show Permissions Onboarding…", action: showOnboarding)
                 }
                 Card { ForEach(shortcuts, id: \.title) { ShortcutRecorder(controller: $0) } }
+                Card {
+                    TextField("Inbox note title", text: $toggles.inboxTitle)
+                    Text("The append shortcut and tabieum://append add a line to this note, and create it the first time.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
             }
             .tabItem { Label("General", systemImage: "gearshape") }
             SettingsPage {
@@ -108,6 +116,11 @@ struct SettingsView: View {
                         ForEach(VimCursorSetting.allCases, id: \.self) { Text($0.displayName).tag($0) }
                     }
                     .disabled(!toggles.vimEnabled)
+                }
+                Card {
+                    Toggle("Show a format toolbar when text is selected", isOn: $toggles.formatToolbarEnabled)
+                    Text("A small toolbar next to the selection in Notes: bold, italic, underline, strikethrough, title, bulleted list and checklist.")
+                        .font(.callout).foregroundStyle(.secondary)
                 }
                 Card {
                     Text("Markdown shortcuts").bold()
@@ -128,6 +141,23 @@ struct SettingsView: View {
             AISearchTab(toggles: toggles, embedding: embedding, install: install, setRAG: setRAG,
                         chooseModel: chooseModel, retryInstall: retryInstall)
                 .tabItem { Label("Search & Agents", systemImage: "magnifyingglass") }
+            SettingsPage {
+                Card {
+                    Toggle("Show Caret Overlay", isOn: $toggles.showCaretOverlay)
+                    Toggle("Show Vim Latency", isOn: $toggles.showVimLatency)
+                    Text("Options for developing and testing the app. Both are off by default.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+            }
+            .tabItem { Label("Debug", systemImage: "ladybug") }
+            SettingsPage {
+                Card {
+                    Text(productName).bold()
+                    Text("Version \(version)")
+                    Button("Check for Updates…", action: checkForUpdates)
+                }
+            }
+            .tabItem { Label("About", systemImage: "info.circle") }
         }
         .frame(minWidth: 760, minHeight: 320)
         .padding()
