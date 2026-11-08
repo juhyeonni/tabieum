@@ -11,8 +11,23 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
-      - run: sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
-      - run: swift --version
-      - run: swift build
-      - run: scripts/test.sh --no-parallel
-      - run: scripts/bundle.sh
+        with:
+          fetch-depth: 0
+      - id: changes
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git diff --name-only "$BASE"...HEAD
+          if git diff --name-only "$BASE"...HEAD | grep -vE '\.md$|^docs/' > /dev/null; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.changes.outputs.code == 'true'
+        run: sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
+      - if: steps.changes.outputs.code == 'true'
+        run: swift --version
+      - if: steps.changes.outputs.code == 'true'
+        run: swift build
+      - if: steps.changes.outputs.code == 'true'
+        run: scripts/test.sh --no-parallel
+      - if: steps.changes.outputs.code == 'true'
+        run: scripts/bundle.sh
