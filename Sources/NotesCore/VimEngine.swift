@@ -204,6 +204,7 @@ public struct VimEngine: Sendable {
     private var lastChange: [VimKey]?
     private var inChange = false
     private var playDepth = 0
+    private var yanks: [String] = []
 
     public var isRecording: Bool { recording != nil }
     public var searchStatus: String?
@@ -211,6 +212,20 @@ public struct VimEngine: Sendable {
     public private(set) var searchPattern: String?
 
     public mutating func clearSearchPattern() { searchPattern = nil }
+
+    /// The text of each yank since the last call, as it goes on the clipboard: a linewise yank ends with a newline.
+    public mutating func takeYanks() -> [String] {
+        defer { yanks = [] }
+        return yanks
+    }
+
+    private mutating func yank(_ yanked: Register) {
+        register = yanked
+        switch yanked {
+        case .charwise(let s): yanks.append(s)
+        case .linewise(let s): yanks.append(s + "\n")
+        }
+    }
 
     public init(mode: VimMode = .normal, jkEnabled: Bool = false) {
         self.mode = mode
@@ -691,8 +706,11 @@ public struct VimEngine: Sendable {
             }
             let range = visualRange(anchor, in: t)
             let lo = t.index(at: range.location), hi = t.index(at: range.location + range.length)
+            guard command == .deleteSelection else {
+                yank(.charwise(t.string(lo, hi)))
+                return [.select(t.range(lo, lo))]
+            }
             register = .charwise(t.string(lo, hi))
-            guard command == .deleteSelection else { return [.select(t.range(lo, lo))] }
             return edit(buffer, .delete(range), cursorAt: range.location)
         }
     }
@@ -797,7 +815,7 @@ public struct VimEngine: Sendable {
         guard lo < hi else { return op == .change ? caret : [] }
         switch op {
         case .yank:
-            register = .charwise(t.string(lo, hi))
+            yank(.charwise(t.string(lo, hi)))
             return caret
         case .indent, .outdent:
             return []
@@ -814,7 +832,7 @@ public struct VimEngine: Sendable {
         _ op: VimOperator, _ start: Int, _ end: Int, _ buffer: VimBuffer, _ t: VimText
     ) -> [VimAction] {
         if op == .yank {
-            register = .linewise(t.string(start, end))
+            yank(.linewise(t.string(start, end)))
             return []
         }
         let whole = op == .change

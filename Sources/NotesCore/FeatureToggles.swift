@@ -7,6 +7,7 @@ public final class FeatureToggles: ObservableObject {
 
     @Published public var vimEnabled: Bool { didSet { defaults.set(vimEnabled, forKey: "vimEnabled") } }
     @Published public var vimJKEnabled: Bool { didSet { defaults.set(vimJKEnabled, forKey: "vimJKEnabled") } }
+    @Published public var vimYankToClipboard: Bool { didSet { defaults.set(vimYankToClipboard, forKey: "vimYankToClipboard") } }
     @Published public var vimCursorShape: VimCursorSetting { didSet { defaults.set(vimCursorShape.rawValue, forKey: "vimCursorShape") } }
     @Published public var ragEnabled: Bool { didSet { defaults.set(ragEnabled, forKey: "ragEnabled") } }
     /// Whether the search panel also searches by meaning; it needs semantic search (RAG) to be on.
@@ -87,6 +88,7 @@ public final class FeatureToggles: ObservableObject {
         inboxTitle = defaults.string(forKey: "inboxTitle") ?? "Inbox"
         vimEnabled = defaults.bool(forKey: "vimEnabled")
         vimJKEnabled = defaults.bool(forKey: "vimJKEnabled")
+        vimYankToClipboard = defaults.bool(forKey: "vimYankToClipboard")
         vimCursorShape = defaults.string(forKey: "vimCursorShape").flatMap(VimCursorSetting.init(rawValue:)) ?? .modeBased
         ragEnabled = defaults.bool(forKey: "ragEnabled")
         semanticPanelSearch = defaults.bool(forKey: "semanticPanelSearch")

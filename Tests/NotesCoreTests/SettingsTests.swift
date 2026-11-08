@@ -12,12 +12,13 @@ private func freshSuite() -> UserDefaults {
 @Test func togglesAreOffByDefaultAndPersist() {
     let defaults = freshSuite()
     let toggles = FeatureToggles(defaults: defaults)
-    #expect(!toggles.vimEnabled && !toggles.vimJKEnabled && !toggles.ragEnabled && !toggles.aiEnabled)
+    #expect(!toggles.vimEnabled && !toggles.vimJKEnabled && !toggles.vimYankToClipboard && !toggles.ragEnabled && !toggles.aiEnabled)
     toggles.vimEnabled = true
     toggles.vimJKEnabled = true
+    toggles.vimYankToClipboard = true
     toggles.aiEnabled = true
     let reloaded = FeatureToggles(defaults: defaults)
-    #expect(reloaded.vimEnabled && reloaded.vimJKEnabled && !reloaded.ragEnabled && reloaded.aiEnabled)
+    #expect(reloaded.vimEnabled && reloaded.vimJKEnabled && reloaded.vimYankToClipboard && !reloaded.ragEnabled && reloaded.aiEnabled)
 }
 
 @Test func debugTogglesAreOffByDefaultAndPersist() {
