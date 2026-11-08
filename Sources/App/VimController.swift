@@ -70,6 +70,7 @@ final class VimController {
     private var history = HistoryGroups()
     private var latencies = LatencyWindow()
     var latencyText: String?
+    private var copiesYanks = false
     var showsLatency = false {
         didSet { if !showsLatency { latencyText = nil } }
     }
@@ -78,6 +79,9 @@ final class VimController {
         self.tracker = tracker
         toggles.$vimJKEnabled.sink { [weak self] on in
             MainActor.assumeIsolated { self?.engine.jkEnabled = on }
+        }.store(in: &cancellables)
+        toggles.$vimYankToClipboard.sink { [weak self] on in
+            MainActor.assumeIsolated { self?.copiesYanks = on }
         }.store(in: &cancellables)
         toggles.$vimCursorShape.sink { [weak self] setting in
             MainActor.assumeIsolated {
@@ -200,6 +204,7 @@ final class VimController {
         if await runGroupedHistory(command) { return }
         history.record(command, text: buffer.text)
         let actions = engine.execute(command, on: buffer)
+        Self.copy(engine.takeYanks(), enabled: copiesYanks)
         var i = 0
         while i < actions.count {
             let action = actions[i]
@@ -276,6 +281,15 @@ final class VimController {
             return false
         }
         return true
+    }
+
+    /// Puts each yank on the clipboard as a plain copy, with no transient marker, so clipboard managers keep it.
+    static func copy(_ yanks: [String], enabled: Bool, to pasteboard: NSPasteboard = .general) {
+        guard enabled else { return }
+        for text in yanks {
+            pasteboard.clearContents()
+            pasteboard.setString(text, forType: .string)
+        }
     }
 
     private func paste(_ text: String, until applied: @escaping (Int?) -> Bool) async -> Bool {
