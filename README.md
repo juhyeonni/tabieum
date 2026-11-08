@@ -4,7 +4,7 @@ Search and keyboard features beside Apple Notes, in a menu-bar app. It runs on y
 
 <img src="docs/media/tabieum-hero.gif" width="880" alt="Claude Code asks Tabieum to search the notes and write a summary; after you allow it, the new note appears in Apple Notes with links to its sources.">
 
-Tabieum is a separate app that works next to Notes; it is not a plug-in for it. It is not affiliated with Apple. Apple Notes is a trademark of Apple Inc.
+Tabieum is a separate app that works next to Notes; it is not a plug-in for it. It is not affiliated with Apple. Apple, Mac, macOS and Apple Notes are trademarks of Apple Inc., registered in the U.S. and other countries and regions.
 
 ## What you get
 
