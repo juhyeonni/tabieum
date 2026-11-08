@@ -28,6 +28,28 @@ sed -e "s/__PRODUCT_NAME__/$PRODUCT_NAME/g" \
     -e "s|__REPO__|$REPO|g" \
     Config/Info.plist.in > "$app/Contents/Info.plist"
 plutil -lint "$app/Contents/Info.plist" > /dev/null
+# Ship our license and NOTICE and every resolved package's, copied from the pinned checkouts.
+res="$app/Contents/Resources"
+mkdir -p "$res/licenses"
+cp LICENSE NOTICE "$res/"
+i=0
+pins=$(plutil -extract pins raw Package.resolved)
+while [ "$i" -lt "$pins" ]; do
+  identity=$(plutil -extract "pins.$i.identity" raw Package.resolved)
+  checkout=".build/checkouts/$(basename "$(plutil -extract "pins.$i.location" raw Package.resolved)" .git)"
+  mkdir -p "$res/licenses/$identity"
+  found=""
+  for f in "$checkout"/LICENSE* "$checkout"/LICENCE* "$checkout"/NOTICE*; do
+    [ -f "$f" ] || continue
+    cp "$f" "$res/licenses/$identity/"
+    case "$(basename "$f")" in LICEN*) found=1 ;; esac
+  done
+  if [ -z "$found" ]; then
+    echo "error: no license file for $identity in $checkout" >&2
+    exit 1
+  fi
+  i=$((i + 1))
+done
 # A stable identity keeps Keychain "Always Allow" valid across rebuilds; the ad-hoc default changes with every build.
 codesign --force --sign "${TABIEUM_SIGN_IDENTITY:--}" "$app"
 echo "$app"
