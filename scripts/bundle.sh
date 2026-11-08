@@ -9,18 +9,13 @@ cd "$(dirname "$0")/.."
 app="build/$PRODUCT_NAME.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS"
-if [ -n "${TABIEUM_ARCHS:-}" ]; then
-  slices=""
-  for arch in $TABIEUM_ARCHS; do
-    swift build -c release --product App --triple "$arch-apple-macosx15.0"
-    slices="$slices .build/$arch-apple-macosx/release/App"
-  done
-  lipo -create -output "$app/Contents/MacOS/$PRODUCT_NAME" $slices
-else
-  swift build -c release --product App
-  bin_dir=$(swift build -c release --show-bin-path)
-  cp "$bin_dir/App" "$app/Contents/MacOS/$PRODUCT_NAME"
-fi
+arch_flags=""
+for arch in ${TABIEUM_ARCHS:-}; do
+  arch_flags="$arch_flags --arch $arch"
+done
+swift build -c release --product App $arch_flags
+bin_dir=$(swift build -c release --product App $arch_flags --show-bin-path)
+cp "$bin_dir/App" "$app/Contents/MacOS/$PRODUCT_NAME"
 sed -e "s/__PRODUCT_NAME__/$PRODUCT_NAME/g" \
     -e "s/__BUNDLE_ID__/$BUNDLE_ID/g" \
     -e "s/__URL_SCHEME__/$URL_SCHEME/g" \
