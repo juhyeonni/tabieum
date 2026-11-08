@@ -82,7 +82,7 @@ public final class FeatureToggles: ObservableObject {
         defaults.set(Int(value.modifiers.rawValue), forKey: "\(name).modifiers")
     }
 
-    public init(defaults: UserDefaults = .standard, e5Available: Bool = EmbeddingModel.e5Available) {
+    public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         templateFolder = defaults.string(forKey: "templateFolder") ?? "Templates"
         inboxTitle = defaults.string(forKey: "inboxTitle") ?? "Inbox"
@@ -92,7 +92,7 @@ public final class FeatureToggles: ObservableObject {
         vimCursorShape = defaults.string(forKey: "vimCursorShape").flatMap(VimCursorSetting.init(rawValue:)) ?? .modeBased
         ragEnabled = defaults.bool(forKey: "ragEnabled")
         semanticPanelSearch = defaults.bool(forKey: "semanticPanelSearch")
-        embeddingModel = EmbeddingModel(defaults: defaults, e5Available: e5Available)
+        embeddingModel = EmbeddingModel(defaults: defaults)
         mcpEnabled = defaults.bool(forKey: "mcpEnabled")
         aiEnabled = defaults.bool(forKey: "aiEnabled")
         write = WriteSettings(defaults: defaults)

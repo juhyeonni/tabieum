@@ -83,14 +83,14 @@ struct AISearchTab: View {
                 Text(model.ragStatus).font(.callout).foregroundStyle(.secondary)
                 Picker("Embedding model", selection: Binding(get: { toggles.embeddingModel }, set: chooseModel)) {
                     Text("Apple (built in)").tag(EmbeddingModel.apple)
-                    if EmbeddingModel.e5Available {
-                        Text("tabieum-e5-small-coreml (\(Self.downloadSize) download)").tag(EmbeddingModel.e5Small)
-                    }
+                    Text("tabieum-e5-small-coreml (\(Self.downloadSize) download)").tag(EmbeddingModel.e5Small)
                 }
-                if !EmbeddingModel.e5Available {
-                    Text("tabieum-e5-small-coreml needs a Mac with Apple silicon, so this Mac uses the built-in model.")
+                #if !arch(arm64)
+                if toggles.embeddingModel == .e5Small {
+                    Text("On an Intel Mac, tabieum-e5-small-coreml indexes more slowly than on Apple silicon.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
+                #endif
                 modelStatus
                 Toggle("Also search by meaning in the search panel", isOn: $toggles.semanticPanelSearch)
                     .disabled(!toggles.ragEnabled)

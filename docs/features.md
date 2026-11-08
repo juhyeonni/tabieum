@@ -31,7 +31,7 @@ Searching by meaning has two models. The built-in one comes with macOS. The othe
 - **No note text is sent.** Only the model is downloaded.
 - **Remove it:** delete `~/Library/Application Support/dev.juhyeonni.tabieum/models/`. Choose the built-in model first if you want to keep semantic search working. The app downloads the model again if you choose it later.
 
-The model is made for the Neural Engine of Apple silicon. On an Intel Mac the option is hidden and the built-in model is used.
+The model runs on the Neural Engine of Apple silicon. An Intel Mac runs it on the CPU and GPU, so indexing there is slower.
 
 ### AI helpers
 
