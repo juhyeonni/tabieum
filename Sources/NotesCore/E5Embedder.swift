@@ -3,12 +3,20 @@ import Foundation
 import Hub
 import Tokenizers
 
-/// multilingual-e5-small converted to Core ML and run on the Neural Engine. The model loads on first use and unloads
-/// after `idleSeconds` without one. Queries and stored passages get the prefixes the model was trained with.
+/// multilingual-e5-small converted to Core ML, run on the Neural Engine of an Apple silicon Mac and on the CPU and GPU of
+/// an Intel Mac. The model loads on first use and unloads after `idleSeconds` without one. Queries and stored passages get the prefixes the model was trained with.
 public final class E5Embedder: Embedder, @unchecked Sendable {
     static let sequenceLength = 256
     static let padToken: Int32 = 1
     static let endToken = 2
+    /// An Intel Mac has no Neural Engine, and `.cpuAndNeuralEngine` would leave it on the CPU alone, about twice as slow.
+    static var computeUnits: MLComputeUnits {
+        #if arch(arm64)
+        .cpuAndNeuralEngine
+        #else
+        .cpuAndGPU
+        #endif
+    }
 
     private struct Runtime {
         let model: MLModel
@@ -91,7 +99,7 @@ public final class E5Embedder: Embedder, @unchecked Sendable {
         if let runtime { return runtime }
         guard store.isInstalled(source) else { throw SQLiteError(message: "the embedding model is not installed", code: 0) }
         let configuration = MLModelConfiguration()
-        configuration.computeUnits = .cpuAndNeuralEngine
+        configuration.computeUnits = Self.computeUnits
         let loaded = Runtime(model: try MLModel(contentsOf: store.compiledModel, configuration: configuration),
                              tokenizer: try tokenizer())
         runtime = loaded
@@ -123,18 +131,8 @@ public enum EmbeddingModel: String, CaseIterable, Sendable {
 
     public static let defaultsKey = "embeddingModel"
 
-    /// tabieum-e5-small-coreml is converted for the Neural Engine of an Apple silicon Mac, so an Intel Mac uses the built-in model.
-    public static var e5Available: Bool {
-        #if arch(arm64)
-        true
-        #else
-        false
-        #endif
-    }
-
-    public init(defaults: UserDefaults = .standard, e5Available: Bool = Self.e5Available) {
-        let stored = defaults.string(forKey: Self.defaultsKey).flatMap(Self.init(rawValue:)) ?? .apple
-        self = stored == .e5Small && !e5Available ? .apple : stored
+    public init(defaults: UserDefaults = .standard) {
+        self = defaults.string(forKey: Self.defaultsKey).flatMap(Self.init(rawValue:)) ?? .apple
     }
 }
 
@@ -144,19 +142,14 @@ public final class ConfiguredEmbedder: Embedder, @unchecked Sendable {
     private let defaults: UserDefaults
     private let apple: Embedder
     private let e5: Embedder
-    private let e5Available: Bool
 
-    public init(
-        defaults: UserDefaults = .standard, apple: Embedder = AppleEmbedder(), e5: Embedder = E5Embedder.standard(),
-        e5Available: Bool = EmbeddingModel.e5Available
-    ) {
+    public init(defaults: UserDefaults = .standard, apple: Embedder = AppleEmbedder(), e5: Embedder = E5Embedder.standard()) {
         self.defaults = defaults
         self.apple = apple
         self.e5 = e5
-        self.e5Available = e5Available
     }
 
-    private var current: Embedder { EmbeddingModel(defaults: defaults, e5Available: e5Available) == .e5Small ? e5 : apple }
+    private var current: Embedder { EmbeddingModel(defaults: defaults) == .e5Small ? e5 : apple }
 
     public var fingerprint: String { current.fingerprint }
     public func modelID(for text: String) -> String? { current.modelID(for: text) }

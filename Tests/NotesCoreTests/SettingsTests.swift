@@ -35,13 +35,12 @@ private func freshSuite() -> UserDefaults {
 
 @Test func embeddingModelDefaultsToAppleAndPersists() {
     let defaults = freshSuite()
-    let toggles = FeatureToggles(defaults: defaults, e5Available: true)
+    let toggles = FeatureToggles(defaults: defaults)
     #expect(toggles.embeddingModel == .apple)
     toggles.embeddingModel = .e5Small
-    #expect(FeatureToggles(defaults: defaults, e5Available: true).embeddingModel == .e5Small)
-    #expect(FeatureToggles(defaults: defaults, e5Available: false).embeddingModel == .apple)
+    #expect(FeatureToggles(defaults: defaults).embeddingModel == .e5Small)
     defaults.set("removed-model", forKey: EmbeddingModel.defaultsKey)
-    #expect(FeatureToggles(defaults: defaults, e5Available: true).embeddingModel == .apple)
+    #expect(FeatureToggles(defaults: defaults).embeddingModel == .apple)
 }
 
 @Test func automationStatusMapping() {
