@@ -129,6 +129,13 @@ public final class SearchIndex: @unchecked Sendable {
         }
     }
 
+    /// The folder names `list_folders` reports, in name order.
+    public func folderNames() throws -> [String] {
+        try db.rows("SELECT DISTINCT f.folder FROM notes n JOIN notes_fts f ON f.rowid = n.rowid ORDER BY f.folder") {
+            SQLiteConnection.text($0, 0)
+        }
+    }
+
     func modifiedDates() throws -> [String: Double] {
         let pairs = try db.rows("SELECT id, modified FROM notes") {
             (SQLiteConnection.text($0, 0), sqlite3_column_double($0, 1))

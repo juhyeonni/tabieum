@@ -155,6 +155,10 @@ private func errorCode(_ message: [String: Any]) -> Int? {
         #expect(rows.compactMap { $0["count"] as? Int } == [1, 60])
     }
 
+    @Test func folderNamesMatchListFolders() throws {
+        #expect(try SearchIndex(url: try fixtureIndex(), readOnly: true).folderNames() == ["Home", "Work"])
+    }
+
     @Test func protocolErrorsAndNotifications() throws {
         let s = server(tempURL())
         #expect(errorCode(try reply(s, #"{"jsonrpc":"2.0","id":1,"method":"server/discover"}"#)) == -32601)

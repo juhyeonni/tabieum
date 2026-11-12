@@ -97,6 +97,7 @@ struct AISearchTab: View {
                 Text("The search panel then finds notes by meaning, not only by words. It is a little slower than word search.")
                     .font(.callout).foregroundStyle(.secondary)
             }
+            FolderDescriptionsCard(toggles: toggles)
             Card {
                 Toggle("AI agents (MCP)", isOn: $toggles.mcpEnabled)
                 ScrollView(.horizontal) {
@@ -123,6 +124,32 @@ struct AISearchTab: View {
                     }
                 }
             }
+        }
+    }
+}
+
+struct FolderDescriptionsCard: View {
+    @ObservedObject var toggles: FeatureToggles
+    @State private var folders: [String] = []
+
+    var body: some View {
+        Card {
+            Text("Folder descriptions").bold()
+            Text("One line per folder. AI agents see it next to that folder's notes.")
+                .font(.callout).foregroundStyle(.secondary)
+            ForEach(folders, id: \.self) { folder in
+                LabeledContent(folder) {
+                    TextField(folder, text: Binding(
+                        get: { toggles.folderDescriptions[folder] ?? "" },
+                        set: { toggles.setFolderDescription($0, for: folder) }))
+                    .labelsHidden()
+                }
+            }
+        }
+        .task {
+            guard let bundleIdentifier = ProductInfo.main?.bundleIdentifier else { return }
+            let url = SearchIndex.defaultURL(bundleIdentifier: bundleIdentifier)
+            folders = (try? SearchIndex(url: url, readOnly: true).folderNames()) ?? []
         }
     }
 }
