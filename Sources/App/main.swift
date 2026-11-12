@@ -290,6 +290,18 @@ if CommandLine.arguments.dropFirst().first == "search" {
     exit(result.exitCode)
 }
 
+if CommandLine.arguments.dropFirst().first == "eval" {
+    let info = ProductInfo.main
+    let result = EvalCommand.run(
+        arguments: Array(CommandLine.arguments.dropFirst(2)),
+        serverName: info?.name ?? "tabieum",
+        indexURL: SearchIndex.defaultURL(bundleIdentifier: info?.bundleIdentifier ?? "dev.juhyeonni.tabieum"),
+        ragEnabled: UserDefaults.standard.bool(forKey: "ragEnabled"),
+        makeEmbedder: { ConfiguredEmbedder() })
+    print(result.output)
+    exit(result.exitCode)
+}
+
 if CommandLine.arguments.contains("--mcp") {
     let info = ProductInfo.main
     MCPServer(
