@@ -20,7 +20,7 @@ public struct MCPServer: Sendable {
         var description: String {
             switch self {
             case .searchNotes: "Search the user's notes. Returns the best matches with a snippet."
-            case .getNote: "Read one note as Markdown by its id."
+            case .getNote: "Read one note as Markdown by its id. Pass from_line and max_lines to read part of a long note; total_lines counts all its lines."
             case .listBacklinks: "List the notes that link to one note, by its id."
             case .listRecentNotes: "List the most recently changed notes, newest first, optionally in one folder. Pass next_cursor back as cursor for the next page."
             case .listFolders: "List the folders with how many notes each holds."
@@ -37,7 +37,12 @@ public struct MCPServer: Sendable {
                     "query": ["type": "string"],
                     "k": ["type": "integer", "minimum": 1, "maximum": 50, "default": 10],
                     "folder": ["type": "string", "description": "Exact folder name."]]]
-            case .getNote, .listBacklinks, .deleteNote:
+            case .getNote:
+                ["type": "object", "required": ["id"], "properties": [
+                    "id": ["type": "string"],
+                    "from_line": ["type": "integer", "minimum": 1, "default": 1, "description": "First line to return, 1-based."],
+                    "max_lines": ["type": "integer", "minimum": 1, "description": "How many lines to return. Leave it out for the rest of the note."]]]
+            case .listBacklinks, .deleteNote:
                 ["type": "object", "required": ["id"], "properties": ["id": ["type": "string"]]]
             case .listRecentNotes:
                 ["type": "object", "properties": [
@@ -272,10 +277,25 @@ public struct MCPServer: Sendable {
         guard let id = arguments["id"] as? String, let (note, markdown) = try index.note(id) else {
             throw ToolFailure(message: "No note with that id.")
         }
+        let from = try Self.positiveInt(arguments, "from_line")
+        let max = try Self.positiveInt(arguments, "max_lines")
+        var lines = markdown.split(separator: "\n", omittingEmptySubsequences: false)
+        if lines.last?.isEmpty == true { lines.removeLast() }
         var fields = Self.fields(note)
-        fields["markdown"] = markdown
+        fields["markdown"] = from == nil && max == nil
+            ? markdown : lines.dropFirst((from ?? 1) - 1).prefix(max ?? lines.count).joined(separator: "\n")
+        fields["total_lines"] = lines.count
         fields["snippet"] = nil
         return fields
+    }
+
+    /// An optional integer argument that must be at least 1 when given.
+    private static func positiveInt(_ arguments: [String: Any], _ name: String) throws -> Int? {
+        guard let given = arguments[name] else { return nil }
+        guard let number = given as? NSNumber, number.doubleValue == Double(number.intValue), number.intValue >= 1 else {
+            throw ToolFailure(message: "\(name) must be an integer of at least 1.")
+        }
+        return number.intValue
     }
 
     private func listBacklinks(_ index: SearchIndex, _ arguments: [String: Any]) throws -> [[String: Any]] {
