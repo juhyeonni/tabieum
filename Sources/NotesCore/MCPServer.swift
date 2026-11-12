@@ -20,6 +20,8 @@ public struct MCPServer: Sendable {
         var description: String {
             switch self {
             case .searchNotes: "Search the user's notes. Returns the best matches with a snippet. "
+                + "Pass query, or queries to write the searches yourself: a lex item is a keyword search, best for exact words and names; "
+                + "a vec item is a meaning search, best for a phrase describing what you look for. They are fused into one ranking. "
                 + "Each result has a score that orders the results of one response and is not comparable across calls. "
                 + "A result found by meaning also has a similarity, the cosine similarity of its best chunk to the query: "
                 + "it means the same across calls for one embedding model, but models differ in scale."
@@ -36,8 +38,13 @@ public struct MCPServer: Sendable {
         var schema: [String: Any] {
             switch self {
             case .searchNotes:
-                ["type": "object", "required": ["query"], "properties": [
-                    "query": ["type": "string"],
+                ["type": "object", "properties": [
+                    "query": ["type": "string", "description": "Runs as both a keyword and a meaning search. Required unless queries is given."],
+                    "queries": ["type": "array", "minItems": 1, "maxItems": 10, "items": [
+                        "type": "object", "required": ["type", "text"], "properties": [
+                            "type": ["type": "string", "enum": ["lex", "vec"]],
+                            "text": ["type": "string"]]],
+                        "description": "Your own sub-queries, fused into one ranking with query if both are given."],
                     "k": ["type": "integer", "minimum": 1, "maximum": 50, "default": 10],
                     "folder": ["type": "string", "description": "Exact folder name."]]]
             case .getNote:
@@ -262,36 +269,6 @@ public struct MCPServer: Sendable {
         return try SearchIndex(url: indexURL, readOnly: true)
     }
 
-    private func search(_ index: SearchIndex, _ arguments: [String: Any]) throws -> [[String: Any]] {
-        guard let query = arguments["query"] as? String, !query.isEmpty else {
-            throw ToolFailure(message: "query must be a non-empty string.")
-        }
-        let k = min(max((arguments["k"] as? NSNumber)?.intValue ?? 10, 1), 50)
-        let folder = arguments["folder"] as? String
-        guard ragEnabled(), try index.chunkCount() > 0 else {
-            return describingFolders(Self.scoredFields(try index.search(query, limit: k, folder: folder)))
-        }
-        return describingFolders(try index.hybridSearch(query, embedder: makeEmbedder(), limit: k, folder: folder).map {
-            var hit = Self.fields($0.note)
-            hit["chunk"] = $0.chunkText
-            hit["heading_path"] = $0.headingPath
-            hit["score"] = $0.score
-            hit["similarity"] = $0.similarity.map { Double($0) }
-            return hit
-        })
-    }
-
-    /// Adds folder_description to each entry whose folder has a non-empty one in the settings, read fresh on every call.
-    private func describingFolders(_ entries: [[String: Any]]) -> [[String: Any]] {
-        let descriptions = folderDescriptions()
-        return entries.map { entry in
-            guard let folder = entry["folder"] as? String, let description = descriptions[folder], !description.isEmpty else { return entry }
-            var described = entry
-            described["folder_description"] = description
-            return described
-        }
-    }
-
     private func getNote(_ index: SearchIndex, _ arguments: [String: Any]) throws -> [String: Any] {
         guard let id = arguments["id"] as? String, let (note, markdown) = try index.note(id) else {
             throw ToolFailure(message: "No note with that id.")
@@ -411,6 +388,61 @@ extension SearchIndex {
 }
 
 extension MCPServer {
+    private func search(_ index: SearchIndex, _ arguments: [String: Any]) throws -> [[String: Any]] {
+        let query = arguments["query"] as? String
+        let queries = try typedQueries(arguments["queries"])
+        guard query != nil || arguments["queries"] != nil else {
+            throw ToolFailure(message: "Pass query or queries.")
+        }
+        if let query, query.isEmpty { throw ToolFailure(message: "query must be a non-empty string.") }
+        let k = min(max((arguments["k"] as? NSNumber)?.intValue ?? 10, 1), 50)
+        let folder = arguments["folder"] as? String
+        let vectorsUsable = try ragEnabled() && index.chunkCount() > 0
+        if let query, queries.isEmpty, !vectorsUsable {
+            return describingFolders(Self.scoredFields(try index.search(query, limit: k, folder: folder)))
+        }
+        let embedder = vectorsUsable ? makeEmbedder() : nil
+        let found = queries.isEmpty
+            ? try index.hybridSearch(query ?? "", embedder: embedder, limit: k, folder: folder)
+            : try index.typedSearch(query: query, queries: queries, embedder: embedder, limit: k, folder: folder)
+        return describingFolders(found.map {
+            var hit = Self.fields($0.note)
+            hit["score"] = $0.score
+            guard vectorsUsable else { return hit }
+            hit["chunk"] = $0.chunkText
+            hit["heading_path"] = $0.headingPath
+            hit["similarity"] = $0.similarity.map { Double($0) }
+            return hit
+        })
+    }
+
+    private func typedQueries(_ value: Any?) throws -> [TypedQuery] {
+        guard let value else { return [] }
+        guard let items = value as? [[String: Any]], (1...10).contains(items.count) else {
+            throw ToolFailure(message: "queries must be a list of 1 to 10 items.")
+        }
+        return try items.map {
+            guard let kind = ($0["type"] as? String).flatMap(TypedQuery.Kind.init(rawValue:)) else {
+                throw ToolFailure(message: "Each queries item needs a type of lex or vec.")
+            }
+            guard let text = $0["text"] as? String, !text.isEmpty else {
+                throw ToolFailure(message: "Each queries item needs a non-empty text.")
+            }
+            return TypedQuery(kind: kind, text: text)
+        }
+    }
+
+    /// Adds folder_description to each entry whose folder has a non-empty one in the settings, read fresh on every call.
+    private func describingFolders(_ entries: [[String: Any]]) -> [[String: Any]] {
+        let descriptions = folderDescriptions()
+        return entries.map { entry in
+            guard let folder = entry["folder"] as? String, let description = descriptions[folder], !description.isEmpty else { return entry }
+            var described = entry
+            described["folder_description"] = description
+            return described
+        }
+    }
+
     /// Keyword results with their reciprocal-rank-fusion score, as hybrid search scores them.
     static func scoredFields(_ found: [SearchResult]) -> [[String: Any]] {
         zip(found, SearchIndex.scoredFusion([found.map(\.id)])).map {

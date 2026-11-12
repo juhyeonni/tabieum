@@ -216,6 +216,13 @@ public struct HybridResult: Equatable, Sendable {
     public let similarity: Float?
 }
 
+public struct TypedQuery: Equatable, Sendable {
+    public enum Kind: String, Sendable { case lex, vec }
+    public let kind: Kind
+    public let text: String
+    public init(kind: Kind, text: String) { self.kind = kind; self.text = text }
+}
+
 struct StoredChunk {
     let chunk: Chunk
     let model: String
@@ -364,10 +371,48 @@ extension SearchIndex {
     public func hybridSearch(_ query: String, embedder: Embedder?, limit: Int = 20, folder: String? = nil) throws -> [HybridResult] {
         let text = try search(query, limit: 50, folder: folder)
         let vectors = try embedder.map { try vectorHits(query, embedder: $0, limit: 50, folder: folder) } ?? []
-        let textByID = Dictionary(text.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let vectorByID = Dictionary(vectors.map { ($0.noteID, $0) }, uniquingKeysWith: { first, _ in first })
+        return try fused([text.map(\.id), vectors.map(\.noteID)], texts: text, vectors: vectors, limit: limit)
+    }
+
+    /// Fuses the caller's own keyword (`lex`) and meaning (`vec`) queries by reciprocal rank fusion.
+    /// `query`, when given, runs as both kinds and its two rankings count twice, as qmd weights the original query.
+    /// A `vec` item runs as keyword search when there are no vectors to compare with.
+    public func typedSearch(query: String?, queries: [TypedQuery], embedder: Embedder?, limit: Int = 20, folder: String? = nil) throws -> [HybridResult] {
+        var rankings: [[String]] = []
+        var texts: [SearchResult] = []
+        var vectors: [VectorHit] = []
+        func addText(_ text: String) throws {
+            let found = try search(text, limit: 50, folder: folder)
+            texts += found
+            rankings.append(found.map(\.id))
+        }
+        func addVectors(_ text: String) throws -> Bool {
+            let found = try embedder.map { try vectorHits(text, embedder: $0, limit: 50, folder: folder) } ?? []
+            guard !found.isEmpty else { return false }
+            vectors += found
+            rankings.append(found.map(\.noteID))
+            return true
+        }
+        if let query {
+            for _ in 0..<2 {
+                try addText(query)
+                _ = try addVectors(query)
+            }
+        }
+        for item in queries {
+            switch item.kind {
+            case .lex: try addText(item.text)
+            case .vec: if try !addVectors(item.text) { try addText(item.text) }
+            }
+        }
+        return try fused(rankings, texts: texts, vectors: vectors, limit: limit)
+    }
+
+    private func fused(_ rankings: [[String]], texts: [SearchResult], vectors: [VectorHit], limit: Int) throws -> [HybridResult] {
+        let textByID = Dictionary(texts.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let vectorByID = Dictionary(vectors.map { ($0.noteID, $0) }, uniquingKeysWith: { $0.score >= $1.score ? $0 : $1 })
         var results: [HybridResult] = []
-        for (id, score) in Self.scoredFusion([text.map(\.id), vectors.map(\.noteID)]) {
+        for (id, score) in Self.scoredFusion(rankings) {
             let hit = vectorByID[id]
             guard let note = try textByID[id] ?? noteResult(id, snippet: hit.map { String($0.text.prefix(120)) } ?? "")
             else { continue }
