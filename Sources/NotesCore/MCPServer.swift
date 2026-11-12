@@ -19,7 +19,7 @@ public struct MCPServer: Sendable {
 
         var description: String {
             switch self {
-            case .searchNotes: "Search the user's notes. Returns the best matches with a snippet."
+            case .searchNotes: "Search the user's notes. Returns the best matches with a snippet. Each result has a score that orders the results of one response and is not comparable across calls. A result found by meaning also has a similarity, the cosine similarity of its best chunk to the query: it means the same across calls for one embedding model, but models differ in scale."
             case .getNote: "Read one note as Markdown by its id."
             case .listBacklinks: "List the notes that link to one note, by its id."
             case .listRecentNotes: "List the most recently changed notes, newest first, optionally in one folder. Pass next_cursor back as cursor for the next page."
@@ -262,10 +262,12 @@ public struct MCPServer: Sendable {
                 var hit = Self.fields($0.note)
                 hit["chunk"] = $0.chunkText
                 hit["heading_path"] = $0.headingPath
+                hit["score"] = $0.score
+                hit["similarity"] = $0.similarity.map { Double($0) }
                 return hit
             }
         }
-        return try index.search(query, limit: k, folder: folder).map(Self.fields)
+        return Self.scoredFields(try index.search(query, limit: k, folder: folder))
     }
 
     private func getNote(_ index: SearchIndex, _ arguments: [String: Any]) throws -> [String: Any] {
@@ -331,6 +333,15 @@ public struct MCPServer: Sendable {
         let parts = String(decoding: data, as: UTF8.self).split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
         guard parts.count == 2, let modified = Double(parts[0]) else { return nil }
         return (modified, String(parts[1]))
+    }
+
+    /// Keyword results with their reciprocal-rank-fusion score, as hybrid search scores them.
+    static func scoredFields(_ found: [SearchResult]) -> [[String: Any]] {
+        zip(found, SearchIndex.scoredFusion([found.map(\.id)])).map {
+            var hit = fields($0)
+            hit["score"] = $1.score
+            return hit
+        }
     }
 
     static func fields(_ note: SearchResult) -> [String: Any] {

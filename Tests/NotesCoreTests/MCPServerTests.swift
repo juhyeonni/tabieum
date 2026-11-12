@@ -78,7 +78,10 @@ private func errorCode(_ message: [String: Any]) -> Int? {
         let few = try callTool(s, "search_notes", #"{"query":"apple","k":3}"#)
         let rows = try hits(few.text)
         #expect(!few.isError && rows.count == 3)
-        #expect(Set(rows[0].keys) == ["id", "title", "folder", "modified", "snippet"])
+        #expect(Set(rows[0].keys) == ["id", "title", "folder", "modified", "snippet", "score"])
+        let scores = rows.compactMap { $0["score"] as? Double }
+        #expect(scores.count == 3 && scores == scores.sorted(by: >))
+        #expect(abs(scores[0] - (1.0 / 61 + 0.05)) < 1e-9)
         #expect(rows[0]["modified"] as? String == "2001-01-01T00:01:40Z")
         #expect(try hits(callTool(s, "search_notes", #"{"query":"apple","k":500}"#).text).count == 50)
         #expect(try hits(callTool(s, "search_notes", #"{"query":"apple"}"#).text).count == 10)
@@ -92,6 +95,10 @@ private func errorCode(_ message: [String: Any]) -> Int? {
         #expect(on.first?["id"] as? String == "car")
         #expect(on.first?["heading_path"] as? String == "Garage")
         #expect(on.first?["chunk"] as? String == "my automobile")
+        #expect(on.first?["score"] as? Double != nil)
+        #expect(on.first?["similarity"] is Double)
+        let hybridScores = on.compactMap { $0["score"] as? Double }
+        #expect(hybridScores == hybridScores.sorted(by: >))
     }
 
     @Test func searchFiltersByFolderBeforeTheLimit() throws {

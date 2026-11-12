@@ -210,6 +210,10 @@ public struct HybridResult: Equatable, Sendable {
     /// The note's best-matching chunk; nil when the note matched only by full text.
     public let chunkText: String?
     public let headingPath: String?
+    /// The reciprocal-rank-fusion score; it orders one response and means nothing across calls.
+    public let score: Double
+    /// Cosine similarity of the best chunk to the query; nil when the note matched only by words.
+    public let similarity: Float?
 }
 
 struct StoredChunk {
@@ -305,6 +309,10 @@ extension SearchIndex {
     /// A note's best rank in any ranking adds a bonus once, +0.05 for first and +0.02 for second or third,
     /// as qmd does, so a top keyword match is not diluted by notes that only rank well in the fused list.
     static func reciprocalRankFusion(_ rankings: [[String]], k: Double = 60) -> [String] {
+        scoredFusion(rankings, k: k).map(\.id)
+    }
+
+    static func scoredFusion(_ rankings: [[String]], k: Double = 60) -> [(id: String, score: Double)] {
         var scores: [String: Double] = [:]
         var bestOffset: [String: Int] = [:]
         var order: [String] = []
@@ -318,7 +326,7 @@ extension SearchIndex {
         for (id, offset) in bestOffset {
             scores[id]! += offset == 0 ? 0.05 : offset <= 2 ? 0.02 : 0
         }
-        return order.enumerated().sorted { (scores[$0.element]!, $1.offset) > (scores[$1.element]!, $0.offset) }.map(\.element)
+        return order.enumerated().sorted { (scores[$0.element]!, $1.offset) > (scores[$1.element]!, $0.offset) }.map { (id: $0.element, score: scores[$0.element]!) }
     }
 
     private struct VectorHit {
@@ -359,11 +367,12 @@ extension SearchIndex {
         let textByID = Dictionary(text.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let vectorByID = Dictionary(vectors.map { ($0.noteID, $0) }, uniquingKeysWith: { first, _ in first })
         var results: [HybridResult] = []
-        for id in Self.reciprocalRankFusion([text.map(\.id), vectors.map(\.noteID)]) {
+        for (id, score) in Self.scoredFusion([text.map(\.id), vectors.map(\.noteID)]) {
             let hit = vectorByID[id]
             guard let note = try textByID[id] ?? noteResult(id, snippet: hit.map { String($0.text.prefix(120)) } ?? "")
             else { continue }
-            results.append(HybridResult(note: note, chunkText: hit?.text, headingPath: hit?.path))
+            results.append(HybridResult(note: note, chunkText: hit?.text, headingPath: hit?.path,
+                                        score: score, similarity: hit?.score))
             if results.count == limit { break }
         }
         return results

@@ -11,7 +11,7 @@ public enum SearchCommand {
         }
         do {
             let hits = try SearchIndex(url: indexURL, readOnly: true).search(words, limit: limit)
-            return (MCPServer.json(["results": hits.map(MCPServer.fields)]), 0)
+            return (MCPServer.json(["results": MCPServer.scoredFields(hits)]), 0)
         } catch {
             return (MCPServer.json(["error": "The search index could not be read: \(error)"]), 1)
         }
