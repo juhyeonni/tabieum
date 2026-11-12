@@ -298,6 +298,7 @@ if CommandLine.arguments.contains("--mcp") {
         indexURL: SearchIndex.defaultURL(bundleIdentifier: info?.bundleIdentifier ?? "dev.juhyeonni.tabieum"),
         isEnabled: { UserDefaults.standard.bool(forKey: "mcpEnabled") },
         ragEnabled: { UserDefaults.standard.bool(forKey: "ragEnabled") },
+        folderDescriptions: { UserDefaults.standard.dictionary(forKey: "folderDescriptions") as? [String: String] ?? [:] },
         writeSettings: { WriteSettings(defaults: .standard) },
         writeChannel: WriteSocketClient(path: NoteWriteService.socketURL(bundleIdentifier: info?.bundleIdentifier ?? "dev.juhyeonni.notekit"))
     ).runStdio()
