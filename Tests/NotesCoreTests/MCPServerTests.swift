@@ -112,6 +112,29 @@ private func errorCode(_ message: [String: Any]) -> Int? {
         #expect(wordsOnly.filter { ($0["id"] as? String)?.hasPrefix("n") == true }.allSatisfy { $0["similarity"] == nil })
     }
 
+    @Test func minSimilarityDropsOnlyNotesFoundByMeaningBelowIt() throws {
+        let s = server(try fixtureIndex(vectors: true), rag: true)
+        func ids(_ arguments: String) throws -> [String] {
+            try hits(callTool(s, "search_notes", arguments).text).compactMap { $0["id"] as? String }
+        }
+        #expect(try ids(#"{"query":"car"}"#) == ["car"])
+        #expect(try ids(#"{"query":"car","min_similarity":0.5}"#) == ["car"])
+        #expect(try ids(#"{"query":"car","min_similarity":1.5}"#).isEmpty)
+        #expect(try ids(#"{"query":"apple","k":50}"#).contains("car"))
+        let strict = try ids(#"{"query":"apple","k":50,"min_similarity":0.5}"#)
+        #expect(!strict.contains("car") && strict.contains("n1"))
+        #expect(try ids(#"{"query":"automobile","min_similarity":1.5}"#) == ["car"])
+    }
+
+    @Test func minSimilarityCombinesWithFolderAndQueries() throws {
+        let s = server(try fixtureIndex(vectors: true), rag: true)
+        let queries = #""queries":[{"type":"lex","text":"apple"},{"type":"vec","text":"apple"}],"folder":"Home""#
+        let kept = try hits(callTool(s, "search_notes", "{\(queries)}").text)
+        #expect(kept.compactMap { $0["id"] as? String } == ["car"])
+        let dropped = try hits(callTool(s, "search_notes", "{\(queries),\"min_similarity\":0.5}").text)
+        #expect(dropped.isEmpty)
+    }
+
     @Test func searchFiltersByFolderBeforeTheLimit() throws {
         let url = try fixtureIndex(vectors: true)
         let modified = Date(timeIntervalSinceReferenceDate: 100)

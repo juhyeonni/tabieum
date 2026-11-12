@@ -214,6 +214,19 @@ public struct HybridResult: Equatable, Sendable {
     public let score: Double
     /// Cosine similarity of the best chunk to the query; nil when the note matched only by words.
     public let similarity: Float?
+    /// True when a word of the query matched the note.
+    public let byWords: Bool
+}
+
+/// The similarity below which a note found only by meaning is dropped, per embedding model.
+public enum SimilarityThreshold {
+    /// Chosen with the evaluator's panel mode. A model absent here has no threshold.
+    public static let byModel: [String: Float] = [:]
+
+    /// Looks the model up by its id without the revision after `@`, so an asset update keeps its threshold.
+    public static func lookup(_ modelID: String?, in table: [String: Float] = byModel) -> Float? {
+        modelID.flatMap { table[String($0.split(separator: "@", maxSplits: 1, omittingEmptySubsequences: false)[0])] }
+    }
 }
 
 public struct TypedQuery: Equatable, Sendable {
@@ -368,16 +381,19 @@ extension SearchIndex {
 
     /// Fuses the top 50 notes of full-text search and of vector search by reciprocal rank fusion.
     /// With no comparable vectors the order is the full-text order.
-    public func hybridSearch(_ query: String, embedder: Embedder?, limit: Int = 20, folder: String? = nil) throws -> [HybridResult] {
+    /// A note found only by meaning is dropped when its similarity is below `minSimilarity`; a note matched by words never is.
+    public func hybridSearch(_ query: String, embedder: Embedder?, limit: Int = 20, folder: String? = nil,
+                             minSimilarity: Float? = nil) throws -> [HybridResult] {
         let text = try search(query, limit: 50, folder: folder)
         let vectors = try embedder.map { try vectorHits(query, embedder: $0, limit: 50, folder: folder) } ?? []
-        return try fused([text.map(\.id), vectors.map(\.noteID)], texts: text, vectors: vectors, limit: limit)
+        return try fused([text.map(\.id), vectors.map(\.noteID)], texts: text, vectors: vectors, limit: limit, minSimilarity: minSimilarity)
     }
 
     /// Fuses the caller's own keyword (`lex`) and meaning (`vec`) queries by reciprocal rank fusion.
     /// `query`, when given, runs as both kinds and its two rankings count twice, as qmd weights the original query.
     /// A `vec` item runs as keyword search when there are no vectors to compare with.
-    public func typedSearch(query: String?, queries: [TypedQuery], embedder: Embedder?, limit: Int = 20, folder: String? = nil) throws -> [HybridResult] {
+    public func typedSearch(query: String?, queries: [TypedQuery], embedder: Embedder?, limit: Int = 20, folder: String? = nil,
+                            minSimilarity: Float? = nil) throws -> [HybridResult] {
         var rankings: [[String]] = []
         var texts: [SearchResult] = []
         var vectors: [VectorHit] = []
@@ -405,34 +421,43 @@ extension SearchIndex {
             case .vec: if try !addVectors(item.text) { try addText(item.text) }
             }
         }
-        return try fused(rankings, texts: texts, vectors: vectors, limit: limit)
+        return try fused(rankings, texts: texts, vectors: vectors, limit: limit, minSimilarity: minSimilarity)
     }
 
-    private func fused(_ rankings: [[String]], texts: [SearchResult], vectors: [VectorHit], limit: Int) throws -> [HybridResult] {
+    private func fused(_ rankings: [[String]], texts: [SearchResult], vectors: [VectorHit], limit: Int,
+                       minSimilarity: Float?) throws -> [HybridResult] {
         let textByID = Dictionary(texts.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let vectorByID = Dictionary(vectors.map { ($0.noteID, $0) }, uniquingKeysWith: { $0.score >= $1.score ? $0 : $1 })
         var results: [HybridResult] = []
         for (id, score) in Self.scoredFusion(rankings) {
             let hit = vectorByID[id]
+            let byWords = textByID[id] != nil
+            if !byWords, let minSimilarity, let similarity = hit?.score, similarity < minSimilarity { continue }
             guard let note = try textByID[id] ?? noteResult(id, snippet: hit.map { String($0.text.prefix(120)) } ?? "")
             else { continue }
             results.append(HybridResult(note: note, chunkText: hit?.text, headingPath: hit?.path,
-                                        score: score, similarity: hit?.score))
+                                        score: score, similarity: hit?.score, byWords: byWords))
             if results.count == limit { break }
         }
         return results
     }
 
     /// What the search panel lists: the full-text hits, or the hybrid order when an embedder is given.
-    /// Notes found only by meaning are marked, and at most `maxMeaningOnly` of them are listed: a match by meaning
-    /// has no score that tells a real one from a weak one.
-    public func panelSearch(_ query: String, embedder: Embedder?, limit: Int = 50, maxMeaningOnly: Int = 20) throws -> [PanelHit] {
+    /// Notes found only by meaning are marked. One below the query's model threshold in `thresholds` is dropped,
+    /// and at most `maxMeaningOnly` are listed as a backstop for a model with no threshold.
+    public func panelSearch(_ query: String, embedder: Embedder?, limit: Int = 50, maxMeaningOnly: Int = 20,
+                            thresholds: [String: Float] = SimilarityThreshold.byModel) throws -> [PanelHit] {
+        let minSimilarity = SimilarityThreshold.lookup(embedder?.modelID(for: query), in: thresholds)
+        return try panelHits(query, embedder: embedder, limit: limit, maxMeaningOnly: maxMeaningOnly, minSimilarity: minSimilarity)
+    }
+
+    func panelHits(_ query: String, embedder: Embedder?, limit: Int = 50, maxMeaningOnly: Int = 20,
+                   minSimilarity: Float?) throws -> [PanelHit] {
         guard let embedder else { return try search(query, limit: limit).map { PanelHit(note: $0, byMeaningOnly: false) } }
-        let words = Set(try search(query, limit: 50).map(\.id))
         var meaningOnly = 0
         var hits: [PanelHit] = []
-        for result in try hybridSearch(query, embedder: embedder, limit: limit) {
-            let byMeaningOnly = !words.contains(result.note.id)
+        for result in try hybridSearch(query, embedder: embedder, limit: limit, minSimilarity: minSimilarity) {
+            let byMeaningOnly = !result.byWords
             if byMeaningOnly {
                 guard meaningOnly < maxMeaningOnly else { continue }
                 meaningOnly += 1

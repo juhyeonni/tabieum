@@ -42,6 +42,31 @@ private func fixture() throws -> SearchIndex {
     #expect(try index.panelSearch("kilometres", embedder: silent).map(\.note.id).contains("run"))
 }
 
+@Test func panelSearchDropsMeaningOnlyNotesBelowTheModelThreshold() throws {
+    let index = try fixture()
+    func ids(_ query: String, _ thresholds: [String: Float]) throws -> [String] {
+        try index.panelSearch(query, embedder: CarEmbedder(), thresholds: thresholds).map(\.note.id)
+    }
+    #expect(try ids("car", ["stub": 0.5]) == ["car"])
+    #expect(try ids("car", ["stub": 1.5]).isEmpty)
+    #expect(try ids("car", [:]) == ["car"])
+    #expect(try ids("car", ["other": 1.5]) == ["car"])
+}
+
+@Test func panelSearchKeepsNotesMatchedByWordsWhateverTheirSimilarity() throws {
+    let index = try fixture()
+    let hits = try index.panelSearch("garage", embedder: CarEmbedder(), thresholds: ["stub": 0.9])
+    #expect(hits.map(\.note.id) == ["car"] && hits.first?.byMeaningOnly == false)
+}
+
+@Test func thresholdLookupIgnoresTheRevisionAfterAt() {
+    let table: [String: Float] = ["e5-small": 0.8]
+    #expect(SimilarityThreshold.lookup("e5-small@abc", in: table) == 0.8)
+    #expect(SimilarityThreshold.lookup("e5-small", in: table) == 0.8)
+    #expect(SimilarityThreshold.lookup("other@1", in: table) == nil)
+    #expect(SimilarityThreshold.lookup(nil, in: table) == nil)
+}
+
 @Test func semanticPanelSearchIsOffByDefaultAndPersists() {
     let name = "test.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: name)!

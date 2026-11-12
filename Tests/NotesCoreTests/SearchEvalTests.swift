@@ -74,6 +74,42 @@ private func isReadyForBothLanguages(_ embedder: Embedder) -> Bool {
         #expect(below(today, SearchMetrics(recallAt5: 0.5, mrr: 0.51)))
     }
 
+    @Test func panelModeReportsMetricsWithAndWithoutTheThreshold() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("index.sqlite")
+        let index = try SearchIndex(url: url)
+        let modified = Date(timeIntervalSinceReferenceDate: 1)
+        try index.upsert([("a", "alpha"), ("b", "beta"), ("c", "gamma")].map {
+            IndexedNote(id: $0.0, title: $0.0.uppercased(), folder: "", modified: modified, body: $0.1, owner: "")
+        })
+        let stub = ThresholdEmbedder()
+        _ = try index.embedPending(using: stub, shouldPause: { false }, log: { _ in }, progress: { _ in })
+        let cases = [SearchEvalCase(query: "alpha", expected: ["a"]), SearchEvalCase(query: "nothing", expected: [])]
+        let report = try SearchEval.panelEvaluate(index, cases: cases, embedder: stub, threshold: 0.5)
+        #expect(report.withoutThreshold.meaningOnlyOnNoAnswer == 3)
+        #expect(report.withThreshold.meaningOnlyOnNoAnswer == 2)
+        #expect(report.withThreshold.metrics == SearchMetrics(recallAt5: 1, mrr: 1))
+        #expect(report.withoutThreshold.metrics == report.withThreshold.metrics)
+        let chosen = try #require(try SearchEval.chooseThreshold(index, cases: cases, embedder: stub))
+        #expect(chosen > 0 && chosen < 1)
+    }
+
+    @Test func eachReadyModelThresholdKeepsPanelMetricsAndDropsNoAnswerNotes() throws {
+        let cases = try load("search-eval-cases.json", as: SearchEvalCases.self).cases
+        let index = try corpusIndex()
+        for embedder in [AppleEmbedder(), E5Embedder.standard()] as [Embedder] {
+            guard isReadyForBothLanguages(embedder) else { continue }
+            _ = try index.embedPending(using: embedder, shouldPause: { false }, log: { print($0) }, progress: { _ in })
+            let chosen = try SearchEval.chooseThreshold(index, cases: cases, embedder: embedder)
+            let label = chosen.map { "\($0)" } ?? "none"
+            print("search eval panel threshold [\(embedder.fingerprint)]: \(label)")
+            guard let chosen else { continue }
+            let report = try SearchEval.panelEvaluate(index, cases: cases, embedder: embedder, threshold: chosen)
+            print("search eval panel [\(embedder.fingerprint)]: \(report)")
+            #expect(!below(report.withThreshold.metrics, report.withoutThreshold.metrics))
+            #expect(report.withThreshold.meaningOnlyOnNoAnswer <= report.withoutThreshold.meaningOnlyOnNoAnswer)
+        }
+    }
+
     @Test func syntheticCorpusStaysAtTheRecordedBaseline() throws {
         let cases = try load("search-eval-cases.json", as: SearchEvalCases.self).cases
         let baseline = try load("search-eval-baseline.json", as: EvalBaseline.self)
@@ -99,5 +135,13 @@ private func isReadyForBothLanguages(_ embedder: Embedder) -> Bool {
             }
             #expect(!below(hybrid, recorded), "hybrid search fell below the baseline \(recorded) for \(fingerprint)")
         }
+    }
+}
+
+private final class ThresholdEmbedder: Embedder, @unchecked Sendable {
+    func modelID(for text: String) -> String? { "stub@1" }
+    func isReady(_ modelID: String) -> Bool { true }
+    func embed(_ text: String, modelID: String) throws -> [Float] {
+        text.contains("alpha") ? [1, 0] : text.contains("beta") ? [0.6, 0.8] : [0, 1]
     }
 }
