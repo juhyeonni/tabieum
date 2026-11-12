@@ -94,6 +94,29 @@ private func errorCode(_ message: [String: Any]) -> Int? {
         #expect(on.first?["chunk"] as? String == "my automobile")
     }
 
+    @Test func searchFiltersByFolderBeforeTheLimit() throws {
+        let url = try fixtureIndex(vectors: true)
+        let modified = Date(timeIntervalSinceReferenceDate: 100)
+        try SearchIndex(url: url).upsert((1...12).map {
+            IndexedNote(id: "h\($0)", title: "Home note \($0)", folder: "Home", modified: modified, body: "apple \($0)", owner: "")
+        })
+        for rag in [false, true] {
+            let s = server(url, rag: rag)
+            let home = try hits(callTool(s, "search_notes", #"{"query":"apple","folder":"Home"}"#).text)
+            #expect(home.count == 10 && home.allSatisfy { $0["folder"] as? String == "Home" })
+            let unknown = try callTool(s, "search_notes", #"{"query":"apple","folder":"Nope"}"#)
+            #expect(try !unknown.isError && hits(unknown.text).isEmpty)
+        }
+    }
+
+    @Test func searchSchemaListsFolderAsOptional() throws {
+        let message = try reply(server(tempURL()), #"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#)
+        let tools = try #require((message["result"] as? [String: Any])?["tools"] as? [[String: Any]])
+        let schema = try #require(tools.first { $0["name"] as? String == "search_notes" }?["inputSchema"] as? [String: Any])
+        #expect((schema["properties"] as? [String: Any])?["folder"] != nil)
+        #expect(schema["required"] as? [String] == ["query"])
+    }
+
     @Test func getNoteReturnsMarkdownOrError() throws {
         let s = server(try fixtureIndex())
         let found = try callTool(s, "get_note", #"{"id":"car"}"#)

@@ -322,11 +322,17 @@ extension SearchIndex {
     }
 
     /// The best chunk per note by cosine similarity, over chunks of the query's own model only.
-    private func vectorHits(_ query: String, embedder: Embedder, limit: Int) throws -> [VectorHit] {
+    private func vectorHits(_ query: String, embedder: Embedder, limit: Int, folder: String?) throws -> [VectorHit] {
         guard let model = embedder.modelID(for: query), embedder.isReady(model),
               let queryVector = try? embedder.embed(query, modelID: model, kind: .query) else { return [] }
         var best: [String: VectorHit] = [:]
-        _ = try db.rows("SELECT note_id, path, text, vec FROM chunks WHERE model = ?1", [.text(model)]) { row -> Void in
+        let sql = folder == nil
+            ? "SELECT note_id, path, text, vec FROM chunks WHERE model = ?1"
+            : """
+              SELECT c.note_id, c.path, c.text, c.vec FROM chunks c JOIN notes n ON n.id = c.note_id
+              JOIN notes_fts f ON f.rowid = n.rowid WHERE c.model = ?1 AND f.folder = ?2
+              """
+        _ = try db.rows(sql, [.text(model)] + (folder.map { [.text($0)] } ?? [])) { row -> Void in
             let blob = SQLiteConnection.blob(row, 3)
             guard blob.count == queryVector.count * MemoryLayout<Float>.size else { return }
             var score: Float = 0
@@ -340,9 +346,9 @@ extension SearchIndex {
 
     /// Fuses the top 50 notes of full-text search and of vector search by reciprocal rank fusion.
     /// With no comparable vectors the order is the full-text order.
-    public func hybridSearch(_ query: String, embedder: Embedder?, limit: Int = 20) throws -> [HybridResult] {
-        let text = try search(query, limit: 50)
-        let vectors = try embedder.map { try vectorHits(query, embedder: $0, limit: 50) } ?? []
+    public func hybridSearch(_ query: String, embedder: Embedder?, limit: Int = 20, folder: String? = nil) throws -> [HybridResult] {
+        let text = try search(query, limit: 50, folder: folder)
+        let vectors = try embedder.map { try vectorHits(query, embedder: $0, limit: 50, folder: folder) } ?? []
         let textByID = Dictionary(text.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let vectorByID = Dictionary(vectors.map { ($0.noteID, $0) }, uniquingKeysWith: { first, _ in first })
         var results: [HybridResult] = []
