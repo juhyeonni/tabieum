@@ -99,7 +99,33 @@ private func errorCode(_ message: [String: Any]) -> Int? {
         let found = try callTool(s, "get_note", #"{"id":"car"}"#)
         let note = try #require(JSONSerialization.jsonObject(with: Data(found.text.utf8)) as? [String: Any])
         #expect(!found.isError && note["markdown"] as? String == "my automobile" && note["title"] as? String == "Garage")
+        #expect(note["total_lines"] as? Int == 1)
         #expect(try callTool(s, "get_note", #"{"id":"nope"}"#).isError)
+    }
+
+    @Test func getNoteReturnsLineRange() throws {
+        let url = tempURL()
+        let modified = Date(timeIntervalSinceReferenceDate: 100)
+        try SearchIndex(url: url).upsert([
+            IndexedNote(id: "long", title: "Long", folder: "Work", modified: modified, body: "a\nb\nc\nd\n", owner: ""),
+            IndexedNote(id: "empty", title: "Empty", folder: "Work", modified: modified, body: "", owner: ""),
+        ])
+        let s = server(url)
+        func read(_ arguments: String) throws -> (markdown: String?, total: Int?) {
+            let result = try callTool(s, "get_note", arguments)
+            #expect(!result.isError)
+            let note = try #require(JSONSerialization.jsonObject(with: Data(result.text.utf8)) as? [String: Any])
+            return (note["markdown"] as? String, note["total_lines"] as? Int)
+        }
+        #expect(try read(#"{"id":"long","from_line":2,"max_lines":2}"#) == ("b\nc", 4))
+        #expect(try read(#"{"id":"long","from_line":3}"#) == ("c\nd", 4))
+        #expect(try read(#"{"id":"long","max_lines":1}"#) == ("a", 4))
+        #expect(try read(#"{"id":"long","from_line":5}"#) == ("", 4))
+        #expect(try read(#"{"id":"long"}"#) == ("a\nb\nc\nd\n", 4))
+        #expect(try read(#"{"id":"empty"}"#) == ("", 0))
+        for bad in [#""from_line":0"#, #""max_lines":0"#, #""from_line":-1"#, #""max_lines":1.5"#, #""from_line":"2""#] {
+            #expect(try callTool(s, "get_note", #"{"id":"long",\#(bad)}"#).isError)
+        }
     }
 
     @Test func listBacklinksReturnsLinkingNotesOrError() throws {
