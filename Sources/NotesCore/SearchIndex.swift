@@ -79,13 +79,13 @@ public final class SearchIndex: @unchecked Sendable {
 
     /// The notes with every term first, then those with only some of them, the better match first within each group.
     /// Every term is a quoted prefix match, so user input never reaches FTS5 syntax.
-    public func search(_ query: String, limit: Int = 20) throws -> [SearchResult] {
+    public func search(_ query: String, limit: Int = 20, folder: String? = nil) throws -> [SearchResult] {
         let terms = query.split(whereSeparator: \.isWhitespace).map(String.init)
         guard !terms.isEmpty else { return [] }
-        let all = try match(terms.map { "(" + Self.spellings($0).joined(separator: " OR ") + ")" }.joined(separator: " AND "), limit)
+        let all = try match(terms.map { "(" + Self.spellings($0).joined(separator: " OR ") + ")" }.joined(separator: " AND "), limit, folder)
         let useful = terms.filter { $0.count >= 2 }
         guard terms.count > 1, !useful.isEmpty, all.count < limit else { return all }
-        let some = try match(useful.flatMap(Self.spellings).joined(separator: " OR "), limit)
+        let some = try match(useful.flatMap(Self.spellings).joined(separator: " OR "), limit, folder)
         let seen = Set(all.map(\.id))
         return Array((all + some.filter { !seen.contains($0.id) }).prefix(limit))
     }
@@ -99,14 +99,14 @@ public final class SearchIndex: @unchecked Sendable {
         return ([term] + stems).map(quoted)
     }
 
-    private func match(_ expression: String, _ limit: Int) throws -> [SearchResult] {
+    private func match(_ expression: String, _ limit: Int, _ folder: String?) throws -> [SearchResult] {
         try db.rows("""
             SELECT n.id, notes_fts.title, notes_fts.folder, n.modified, snippet(notes_fts, 1, '', '', '…', 16), notes_fts.owner
             FROM notes_fts JOIN notes n ON n.rowid = notes_fts.rowid
-            WHERE notes_fts MATCH ?1
+            WHERE notes_fts MATCH ?1\(folder == nil ? "" : " AND notes_fts.folder = ?3")
             ORDER BY bm25(notes_fts, 10.0, 1.0, 0.0, 0.0)
             LIMIT ?2
-            """, [.text(expression), .int(Int64(limit))]) {
+            """, [.text(expression), .int(Int64(limit))] + (folder.map { [.text($0)] } ?? [])) {
             SearchResult(id: SQLiteConnection.text($0, 0), title: SQLiteConnection.text($0, 1),
                          folder: SQLiteConnection.text($0, 2),
                          modified: Date(timeIntervalSinceReferenceDate: sqlite3_column_double($0, 3)),
