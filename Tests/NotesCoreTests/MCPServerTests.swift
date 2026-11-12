@@ -101,6 +101,17 @@ private func errorCode(_ message: [String: Any]) -> Int? {
         #expect(hybridScores == hybridScores.sorted(by: >))
     }
 
+    @Test func hybridScoreAndSimilarityFollowTheRankingsAndTheBestChunk() throws {
+        let s = server(try fixtureIndex(vectors: true), rag: true)
+        let both = try hits(callTool(s, "search_notes", #"{"query":"automobile"}"#).text)
+        #expect(both[0]["id"] as? String == "car")
+        #expect(abs(try #require(both[0]["score"] as? Double) - (2.0 / 61 + 0.05)) < 1e-9)
+        #expect(abs(try #require(both[0]["similarity"] as? Double) - 1) < 1e-6)
+        let wordsOnly = try hits(callTool(s, "search_notes", #"{"query":"apple"}"#).text)
+        #expect(wordsOnly.contains { ($0["id"] as? String)?.hasPrefix("n") == true })
+        #expect(wordsOnly.filter { ($0["id"] as? String)?.hasPrefix("n") == true }.allSatisfy { $0["similarity"] == nil })
+    }
+
     @Test func searchFiltersByFolderBeforeTheLimit() throws {
         let url = try fixtureIndex(vectors: true)
         let modified = Date(timeIntervalSinceReferenceDate: 100)
@@ -129,7 +140,33 @@ private func errorCode(_ message: [String: Any]) -> Int? {
         let found = try callTool(s, "get_note", #"{"id":"car"}"#)
         let note = try #require(JSONSerialization.jsonObject(with: Data(found.text.utf8)) as? [String: Any])
         #expect(!found.isError && note["markdown"] as? String == "my automobile" && note["title"] as? String == "Garage")
+        #expect(note["total_lines"] as? Int == 1)
         #expect(try callTool(s, "get_note", #"{"id":"nope"}"#).isError)
+    }
+
+    @Test func getNoteReturnsLineRange() throws {
+        let url = tempURL()
+        let modified = Date(timeIntervalSinceReferenceDate: 100)
+        try SearchIndex(url: url).upsert([
+            IndexedNote(id: "long", title: "Long", folder: "Work", modified: modified, body: "a\nb\nc\nd\n", owner: ""),
+            IndexedNote(id: "empty", title: "Empty", folder: "Work", modified: modified, body: "", owner: ""),
+        ])
+        let s = server(url)
+        func read(_ arguments: String) throws -> (markdown: String?, total: Int?) {
+            let result = try callTool(s, "get_note", arguments)
+            #expect(!result.isError)
+            let note = try #require(JSONSerialization.jsonObject(with: Data(result.text.utf8)) as? [String: Any])
+            return (note["markdown"] as? String, note["total_lines"] as? Int)
+        }
+        #expect(try read(#"{"id":"long","from_line":2,"max_lines":2}"#) == ("b\nc", 4))
+        #expect(try read(#"{"id":"long","from_line":3}"#) == ("c\nd", 4))
+        #expect(try read(#"{"id":"long","max_lines":1}"#) == ("a", 4))
+        #expect(try read(#"{"id":"long","from_line":5}"#) == ("", 4))
+        #expect(try read(#"{"id":"long"}"#) == ("a\nb\nc\nd\n", 4))
+        #expect(try read(#"{"id":"empty"}"#) == ("", 0))
+        for bad in [#""from_line":0"#, #""max_lines":0"#, #""from_line":-1"#, #""max_lines":1.5"#, #""from_line":"2""#] {
+            #expect(try callTool(s, "get_note", #"{"id":"long",\#(bad)}"#).isError)
+        }
     }
 
     @Test func listBacklinksReturnsLinkingNotesOrError() throws {
@@ -183,6 +220,26 @@ private func errorCode(_ message: [String: Any]) -> Int? {
         let rows = try hits(result.text)
         #expect(rows.compactMap { $0["folder"] as? String } == ["Home", "Work"])
         #expect(rows.compactMap { $0["count"] as? Int } == [1, 60])
+    }
+
+    @Test func folderDescriptionsAppearOnlyWhereSetAndAreReadEachCall() throws {
+        let suite = UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(["Work": "Projects at the office", "Home": ""], forKey: "folderDescriptions")
+        let s = MCPServer(serverName: "tabieum", version: "0", indexURL: try fixtureIndex(), isEnabled: { true },
+                          folderDescriptions: { UserDefaults(suiteName: suite)?.dictionary(forKey: "folderDescriptions") as? [String: String] ?? [:] })
+        let folders = try hits(callTool(s, "list_folders", "{}").text)
+        #expect(folders.map { $0["folder_description"] as? String } == [nil, "Projects at the office"])
+        #expect(!folders[0].keys.contains("folder_description"))
+        let work = try hits(callTool(s, "search_notes", #"{"query":"apple","k":1}"#).text)
+        #expect(work[0]["folder_description"] as? String == "Projects at the office")
+        let home = try hits(callTool(s, "search_notes", #"{"query":"automobile"}"#).text)
+        #expect(!home[0].keys.contains("folder_description"))
+
+        defaults.set(["Home": "House and garage"], forKey: "folderDescriptions")
+        let changed = try hits(callTool(s, "list_folders", "{}").text)
+        #expect(changed.map { $0["folder_description"] as? String } == ["House and garage", nil])
     }
 
     @Test func folderNamesMatchListFolders() throws {
@@ -258,5 +315,47 @@ private func errorCode(_ message: [String: Any]) -> Int? {
         let before = try Data(contentsOf: url)
         _ = run(url, ["apple"])
         #expect(try Data(contentsOf: url) == before)
+    }
+}
+
+@Suite struct EvalCommandTests {
+    private func run(_ url: URL, _ args: [String], rag: Bool = true) -> (output: String, exitCode: Int32) {
+        EvalCommand.run(arguments: args, serverName: "tabieum", indexURL: url, ragEnabled: rag, makeEmbedder: { CarEmbedder() })
+    }
+
+    private func evalFile(_ json: String) throws -> String {
+        let url = tempURL().deletingLastPathComponent().appendingPathComponent("eval.json")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try json.write(to: url, atomically: true, encoding: .utf8)
+        return url.path
+    }
+
+    private func object(_ output: String) throws -> [String: Any] {
+        try #require(JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any])
+    }
+
+    private let cases = #"{"cases":[{"query":"Garage","expected":["car"]}]}"#
+
+    @Test func printsKeywordAndHybridNumbers() throws {
+        let file = try evalFile(cases)
+        let keywordOnly = run(try fixtureIndex(), [file])
+        #expect(keywordOnly.exitCode == 0)
+        let plain = try object(keywordOnly.output)
+        #expect((plain["keyword"] as? [String: Double])?["recall_at_5"] == 1)
+        #expect(plain["hybrid"] == nil)
+
+        let hybrid = try object(run(try fixtureIndex(vectors: true), [file]).output)
+        #expect((hybrid["keyword"] as? [String: Double])?["mrr"] == 1)
+        #expect((hybrid["hybrid"] as? [String: Double])?["recall_at_5"] != nil)
+        #expect(try object(run(try fixtureIndex(vectors: true), [file], rag: false).output)["hybrid"] == nil)
+    }
+
+    @Test func reportsErrors() throws {
+        let url = try fixtureIndex()
+        for out in [run(url, ["/no/such/file.json"]), run(url, [try evalFile("not json")]), run(tempURL(), [try evalFile(cases)])] {
+            #expect(out.exitCode == 1)
+            #expect(try object(out.output)["error"] is String)
+        }
+        #expect(run(url, []).exitCode == 2)
     }
 }

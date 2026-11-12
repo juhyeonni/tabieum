@@ -309,17 +309,17 @@ extension SearchIndex {
     /// A note's best rank in any ranking adds a bonus once, +0.05 for first and +0.02 for second or third,
     /// as qmd does, so a top keyword match is not diluted by notes that only rank well in the fused list.
     static func reciprocalRankFusion(_ rankings: [[String]], k: Double = 60) -> [String] {
-        scoredFusion(rankings, k: k).map(\.id)
+        scoredFusion(rankings, rankConstant: k).map(\.id)
     }
 
-    static func scoredFusion(_ rankings: [[String]], k: Double = 60) -> [(id: String, score: Double)] {
+    static func scoredFusion(_ rankings: [[String]], rankConstant: Double = 60) -> [(id: String, score: Double)] {
         var scores: [String: Double] = [:]
         var bestOffset: [String: Int] = [:]
         var order: [String] = []
         for ranking in rankings {
             for (offset, id) in ranking.enumerated() {
                 if scores[id] == nil { order.append(id) }
-                scores[id, default: 0] += 1 / (k + Double(offset + 1))
+                scores[id, default: 0] += 1 / (rankConstant + Double(offset + 1))
                 bestOffset[id] = min(bestOffset[id] ?? offset, offset)
             }
         }
