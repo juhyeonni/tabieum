@@ -302,14 +302,21 @@ extension SearchIndex {
     }
 
     /// Reciprocal rank fusion (Cormack, Clarke and Büttcher, SIGIR 2009). Ties keep first-seen order.
+    /// A note's best rank in any ranking adds a bonus once, +0.05 for first and +0.02 for second or third,
+    /// as qmd does, so a top keyword match is not diluted by notes that only rank well in the fused list.
     static func reciprocalRankFusion(_ rankings: [[String]], k: Double = 60) -> [String] {
         var scores: [String: Double] = [:]
+        var bestOffset: [String: Int] = [:]
         var order: [String] = []
         for ranking in rankings {
             for (offset, id) in ranking.enumerated() {
                 if scores[id] == nil { order.append(id) }
                 scores[id, default: 0] += 1 / (k + Double(offset + 1))
+                bestOffset[id] = min(bestOffset[id] ?? offset, offset)
             }
+        }
+        for (id, offset) in bestOffset {
+            scores[id]! += offset == 0 ? 0.05 : offset <= 2 ? 0.02 : 0
         }
         return order.enumerated().sorted { (scores[$0.element]!, $1.offset) > (scores[$1.element]!, $0.offset) }.map(\.element)
     }
