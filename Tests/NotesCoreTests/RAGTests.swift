@@ -82,6 +82,10 @@ private func chunks(_ title: String, _ markdown: String) -> [Chunk] {
         #expect(fused == ["a", "c", "b", "d"])
     }
 
+    @Test func firstInOneRankingBeatsSecondInBoth() {
+        #expect(SearchIndex.reciprocalRankFusion([["a", "b"], ["c", "b"]]) == ["a", "c", "b"])
+    }
+
     @Test func noteInOneListStillAppears() {
         #expect(SearchIndex.reciprocalRankFusion([["a"], ["b"]]) == ["a", "b"])
     }
