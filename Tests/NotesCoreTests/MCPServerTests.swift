@@ -204,6 +204,26 @@ private func errorCode(_ message: [String: Any]) -> Int? {
         #expect(rows.compactMap { $0["count"] as? Int } == [1, 60])
     }
 
+    @Test func folderDescriptionsAppearOnlyWhereSetAndAreReadEachCall() throws {
+        let suite = UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(["Work": "Projects at the office", "Home": ""], forKey: "folderDescriptions")
+        let s = MCPServer(serverName: "tabieum", version: "0", indexURL: try fixtureIndex(), isEnabled: { true },
+                          folderDescriptions: { UserDefaults(suiteName: suite)?.dictionary(forKey: "folderDescriptions") as? [String: String] ?? [:] })
+        let folders = try hits(callTool(s, "list_folders", "{}").text)
+        #expect(folders.map { $0["folder_description"] as? String } == [nil, "Projects at the office"])
+        #expect(!folders[0].keys.contains("folder_description"))
+        let work = try hits(callTool(s, "search_notes", #"{"query":"apple","k":1}"#).text)
+        #expect(work[0]["folder_description"] as? String == "Projects at the office")
+        let home = try hits(callTool(s, "search_notes", #"{"query":"automobile"}"#).text)
+        #expect(!home[0].keys.contains("folder_description"))
+
+        defaults.set(["Home": "House and garage"], forKey: "folderDescriptions")
+        let changed = try hits(callTool(s, "list_folders", "{}").text)
+        #expect(changed.map { $0["folder_description"] as? String } == ["House and garage", nil])
+    }
+
     @Test func folderNamesMatchListFolders() throws {
         #expect(try SearchIndex(url: try fixtureIndex(), readOnly: true).folderNames() == ["Home", "Work"])
     }

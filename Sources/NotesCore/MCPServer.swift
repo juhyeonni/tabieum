@@ -90,6 +90,7 @@ public struct MCPServer: Sendable {
     let isEnabled: @Sendable () -> Bool
     let ragEnabled: @Sendable () -> Bool
     let makeEmbedder: @Sendable () -> Embedder
+    let folderDescriptions: @Sendable () -> [String: String]
     let writeSettings: @Sendable () -> WriteSettings
     let writeChannel: WriteChannel?
 
@@ -98,6 +99,7 @@ public struct MCPServer: Sendable {
         isEnabled: @escaping @Sendable () -> Bool,
         ragEnabled: @escaping @Sendable () -> Bool = { false },
         makeEmbedder: @escaping @Sendable () -> Embedder = { ConfiguredEmbedder() },
+        folderDescriptions: @escaping @Sendable () -> [String: String] = { [:] },
         writeSettings: @escaping @Sendable () -> WriteSettings = { WriteSettings() },
         writeChannel: WriteChannel? = nil
     ) {
@@ -107,6 +109,7 @@ public struct MCPServer: Sendable {
         self.isEnabled = isEnabled
         self.ragEnabled = ragEnabled
         self.makeEmbedder = makeEmbedder
+        self.folderDescriptions = folderDescriptions
         self.writeSettings = writeSettings
         self.writeChannel = writeChannel
     }
@@ -262,15 +265,26 @@ public struct MCPServer: Sendable {
         }
         let k = min(max((arguments["k"] as? NSNumber)?.intValue ?? 10, 1), 50)
         let folder = arguments["folder"] as? String
-        if ragEnabled(), try index.chunkCount() > 0 {
-            return try index.hybridSearch(query, embedder: makeEmbedder(), limit: k, folder: folder).map {
-                var hit = Self.fields($0.note)
-                hit["chunk"] = $0.chunkText
-                hit["heading_path"] = $0.headingPath
-                return hit
-            }
+        guard ragEnabled(), try index.chunkCount() > 0 else {
+            return describingFolders(try index.search(query, limit: k, folder: folder).map(Self.fields))
         }
-        return try index.search(query, limit: k, folder: folder).map(Self.fields)
+        return describingFolders(try index.hybridSearch(query, embedder: makeEmbedder(), limit: k, folder: folder).map {
+            var hit = Self.fields($0.note)
+            hit["chunk"] = $0.chunkText
+            hit["heading_path"] = $0.headingPath
+            return hit
+        })
+    }
+
+    /// Adds folder_description to each entry whose folder has a non-empty one in the settings, read fresh on every call.
+    private func describingFolders(_ entries: [[String: Any]]) -> [[String: Any]] {
+        let descriptions = folderDescriptions()
+        return entries.map { entry in
+            guard let folder = entry["folder"] as? String, let description = descriptions[folder], !description.isEmpty else { return entry }
+            var described = entry
+            described["folder_description"] = description
+            return described
+        }
     }
 
     private func getNote(_ index: SearchIndex, _ arguments: [String: Any]) throws -> [String: Any] {
@@ -337,9 +351,9 @@ public struct MCPServer: Sendable {
     }
 
     private func listFolders(_ index: SearchIndex) throws -> [[String: Any]] {
-        try index.db.rows("""
+        describingFolders(try index.db.rows("""
             SELECT f.folder, count(*) FROM notes n JOIN notes_fts f ON f.rowid = n.rowid GROUP BY f.folder ORDER BY f.folder
-            """) { ["folder": SQLiteConnection.text($0, 0), "count": Int(sqlite3_column_int64($0, 1))] }
+            """) { ["folder": SQLiteConnection.text($0, 0), "count": Int(sqlite3_column_int64($0, 1))] })
     }
 
     private static func encodeCursor(_ modified: Double, _ id: String) -> String {
