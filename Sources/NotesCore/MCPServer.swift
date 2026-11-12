@@ -35,7 +35,8 @@ public struct MCPServer: Sendable {
             case .searchNotes:
                 ["type": "object", "required": ["query"], "properties": [
                     "query": ["type": "string"],
-                    "k": ["type": "integer", "minimum": 1, "maximum": 50, "default": 10]]]
+                    "k": ["type": "integer", "minimum": 1, "maximum": 50, "default": 10],
+                    "folder": ["type": "string", "description": "Exact folder name."]]]
             case .getNote, .listBacklinks, .deleteNote:
                 ["type": "object", "required": ["id"], "properties": ["id": ["type": "string"]]]
             case .listRecentNotes:
@@ -258,10 +259,11 @@ public struct MCPServer: Sendable {
             throw ToolFailure(message: "query must be a non-empty string.")
         }
         let k = min(max((arguments["k"] as? NSNumber)?.intValue ?? 10, 1), 50)
+        let folder = arguments["folder"] as? String
         guard ragEnabled(), try index.chunkCount() > 0 else {
-            return describingFolders(try index.search(query, limit: k).map(Self.fields))
+            return describingFolders(try index.search(query, limit: k, folder: folder).map(Self.fields))
         }
-        return describingFolders(try index.hybridSearch(query, embedder: makeEmbedder(), limit: k).map {
+        return describingFolders(try index.hybridSearch(query, embedder: makeEmbedder(), limit: k, folder: folder).map {
             var hit = Self.fields($0.note)
             hit["chunk"] = $0.chunkText
             hit["heading_path"] = $0.headingPath

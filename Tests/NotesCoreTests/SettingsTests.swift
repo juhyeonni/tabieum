@@ -44,6 +44,17 @@ private func freshSuite() -> UserDefaults {
     #expect(FeatureToggles(defaults: defaults).embeddingModel == .apple)
 }
 
+@Test func folderDescriptionsPersistUnderTheSharedKeyAndBlankRemoves() {
+    let defaults = freshSuite()
+    let toggles = FeatureToggles(defaults: defaults)
+    toggles.setFolderDescription("Meeting notes", for: "Work")
+    toggles.setFolderDescription("Recipes", for: "Home")
+    #expect(defaults.dictionary(forKey: "folderDescriptions") as? [String: String] == ["Work": "Meeting notes", "Home": "Recipes"])
+    toggles.setFolderDescription("  ", for: "Home")
+    #expect(defaults.dictionary(forKey: "folderDescriptions") as? [String: String] == ["Work": "Meeting notes"])
+    #expect(FeatureToggles(defaults: defaults).folderDescriptions == ["Work": "Meeting notes"])
+}
+
 @Test func automationStatusMapping() {
     #expect(PermissionState(automationStatus: 0) == .granted)
     #expect(PermissionState(automationStatus: -1743) == .notGranted)
