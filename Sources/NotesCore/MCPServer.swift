@@ -46,7 +46,8 @@ public struct MCPServer: Sendable {
                             "text": ["type": "string"]]],
                         "description": "Your own sub-queries, fused into one ranking with query if both are given."],
                     "k": ["type": "integer", "minimum": 1, "maximum": 50, "default": 10],
-                    "folder": ["type": "string", "description": "Exact folder name."]]]
+                    "folder": ["type": "string", "description": "Exact folder name."],
+                    "min_similarity": ["type": "number", "description": "Drops results found only by meaning whose similarity is below this. Results that match the query's words are kept."]]]
             case .getNote:
                 ["type": "object", "required": ["id"], "properties": [
                     "id": ["type": "string"],
@@ -397,14 +398,15 @@ extension MCPServer {
         if let query, query.isEmpty { throw ToolFailure(message: "query must be a non-empty string.") }
         let k = min(max((arguments["k"] as? NSNumber)?.intValue ?? 10, 1), 50)
         let folder = arguments["folder"] as? String
+        let minSimilarity = (arguments["min_similarity"] as? NSNumber).map { $0.floatValue }
         let vectorsUsable = try ragEnabled() && index.chunkCount() > 0
         if let query, queries.isEmpty, !vectorsUsable {
             return describingFolders(Self.scoredFields(try index.search(query, limit: k, folder: folder)))
         }
         let embedder = vectorsUsable ? makeEmbedder() : nil
         let found = queries.isEmpty
-            ? try index.hybridSearch(query ?? "", embedder: embedder, limit: k, folder: folder)
-            : try index.typedSearch(query: query, queries: queries, embedder: embedder, limit: k, folder: folder)
+            ? try index.hybridSearch(query ?? "", embedder: embedder, limit: k, folder: folder, minSimilarity: minSimilarity)
+            : try index.typedSearch(query: query, queries: queries, embedder: embedder, limit: k, folder: folder, minSimilarity: minSimilarity)
         return describingFolders(found.map {
             var hit = Self.fields($0.note)
             hit["score"] = $0.score

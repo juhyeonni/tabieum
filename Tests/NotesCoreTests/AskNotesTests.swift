@@ -4,7 +4,7 @@ import Testing
 
 private func result(_ id: String, path: String, text: String) -> HybridResult {
     HybridResult(note: SearchResult(id: id, title: "Note \(id)", folder: "", modified: Date(), snippet: "", ownerIdentifier: nil),
-                 chunkText: text, headingPath: path, score: 0, similarity: nil)
+                 chunkText: text, headingPath: path, score: 0, similarity: nil, byWords: false)
 }
 
 private func sources(_ count: Int) -> [AskSource] {
