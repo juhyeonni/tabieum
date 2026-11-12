@@ -200,10 +200,15 @@ private func errorCode(_ message: [String: Any]) -> Int? {
     @Test func badSearchArgumentsReturnToolErrors() throws {
         let s = server(try fixtureIndex())
         let eleven = Array(repeating: #"{"type":"lex","text":"a"}"#, count: 11).joined(separator: ",")
-        for arguments in ["{}", #"{"queries":[{"type":"hyde","text":"a"}]}"#, #"{"queries":[{"type":"lex","text":""}]}"#,
-                          #"{"queries":[]}"#, #"{"queries":[\#(eleven)]}"#] {
+        let cases: [(arguments: String, message: String)] = [
+            (#"{}"#, "query"),
+            (#"{"query":"apple","queries":[{"type":"hyde","text":"a"}]}"#, "lex or vec"),
+            (#"{"query":"apple","queries":[{"type":"lex","text":""}]}"#, "non-empty text"),
+            (#"{"query":"apple","queries":[]}"#, "1 to 10"),
+            (#"{"query":"apple","queries":[\#(eleven)]}"#, "1 to 10")]
+        for (arguments, message) in cases {
             let answer = try callTool(s, "search_notes", arguments)
-            #expect(answer.isError && !answer.text.isEmpty, "\(arguments.prefix(40))")
+            #expect(answer.isError && answer.text.contains(message), "\(arguments.prefix(60))")
         }
     }
 
