@@ -59,7 +59,7 @@ Off by default. Agents can only do what you allow here.
 
 ```
 $ /Applications/Tabieum.app/Contents/MacOS/Tabieum search budget --json
-{"results":[{"folder":"Work","id":"...","modified":"2026-11-06T09:00:00Z","snippet":"...","title":"Budget"}]}
+{"results":[{"folder":"Work","id":"...","modified":"2026-11-06T09:00:00Z","score":0.0664,"snippet":"...","title":"Budget"}]}
 ```
 
 Each result has the same fields as the MCP `search_notes` tool. Errors are `{"error":"..."}` on standard output.

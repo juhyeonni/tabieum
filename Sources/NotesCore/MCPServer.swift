@@ -19,7 +19,10 @@ public struct MCPServer: Sendable {
 
         var description: String {
             switch self {
-            case .searchNotes: "Search the user's notes. Returns the best matches with a snippet."
+            case .searchNotes: "Search the user's notes. Returns the best matches with a snippet. "
+                + "Each result has a score that orders the results of one response and is not comparable across calls. "
+                + "A result found by meaning also has a similarity, the cosine similarity of its best chunk to the query: "
+                + "it means the same across calls for one embedding model, but models differ in scale."
             case .getNote: "Read one note as Markdown by its id. Pass from_line and max_lines to read part of a long note; total_lines counts all its lines."
             case .listBacklinks: "List the notes that link to one note, by its id."
             case .listRecentNotes: "List the most recently changed notes, newest first, optionally in one folder. Pass next_cursor back as cursor for the next page."
@@ -266,12 +269,14 @@ public struct MCPServer: Sendable {
         let k = min(max((arguments["k"] as? NSNumber)?.intValue ?? 10, 1), 50)
         let folder = arguments["folder"] as? String
         guard ragEnabled(), try index.chunkCount() > 0 else {
-            return describingFolders(try index.search(query, limit: k, folder: folder).map(Self.fields))
+            return describingFolders(Self.scoredFields(try index.search(query, limit: k, folder: folder)))
         }
         return describingFolders(try index.hybridSearch(query, embedder: makeEmbedder(), limit: k, folder: folder).map {
             var hit = Self.fields($0.note)
             hit["chunk"] = $0.chunkText
             hit["heading_path"] = $0.headingPath
+            hit["score"] = $0.score
+            hit["similarity"] = $0.similarity.map { Double($0) }
             return hit
         })
     }
@@ -402,5 +407,16 @@ extension SearchIndex {
                           ownerIdentifier: nil),
              SQLiteConnection.text($0, 4))
         }.first
+    }
+}
+
+extension MCPServer {
+    /// Keyword results with their reciprocal-rank-fusion score, as hybrid search scores them.
+    static func scoredFields(_ found: [SearchResult]) -> [[String: Any]] {
+        zip(found, SearchIndex.scoredFusion([found.map(\.id)])).map {
+            var hit = fields($0)
+            hit["score"] = $1.score
+            return hit
+        }
     }
 }
