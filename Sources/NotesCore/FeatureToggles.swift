@@ -40,6 +40,16 @@ public final class FeatureToggles: ObservableObject {
     /// The folder, in every account, whose notes the `/` panel lists as templates.
     @Published public var templateFolder: String { didSet { defaults.set(templateFolder, forKey: "templateFolder") } }
 
+    /// One line per folder name that agents see next to that folder.
+    @Published public private(set) var folderDescriptions: [String: String] {
+        didSet { defaults.set(folderDescriptions, forKey: "folderDescriptions") }
+    }
+
+    /// A blank description removes the folder's entry.
+    public func setFolderDescription(_ text: String, for folder: String) {
+        folderDescriptions[folder] = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
+    }
+
     /// The title of the note the append shortcut adds lines to.
     @Published public var inboxTitle: String { didSet { defaults.set(inboxTitle, forKey: "inboxTitle") } }
 
@@ -86,6 +96,7 @@ public final class FeatureToggles: ObservableObject {
         self.defaults = defaults
         templateFolder = defaults.string(forKey: "templateFolder") ?? "Templates"
         inboxTitle = defaults.string(forKey: "inboxTitle") ?? "Inbox"
+        folderDescriptions = defaults.dictionary(forKey: "folderDescriptions") as? [String: String] ?? [:]
         vimEnabled = defaults.bool(forKey: "vimEnabled")
         vimJKEnabled = defaults.bool(forKey: "vimJKEnabled")
         vimYankToClipboard = defaults.bool(forKey: "vimYankToClipboard")

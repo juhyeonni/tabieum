@@ -302,14 +302,21 @@ extension SearchIndex {
     }
 
     /// Reciprocal rank fusion (Cormack, Clarke and Büttcher, SIGIR 2009). Ties keep first-seen order.
+    /// A note's best rank in any ranking adds a bonus once, +0.05 for first and +0.02 for second or third,
+    /// as qmd does, so a top keyword match is not diluted by notes that only rank well in the fused list.
     static func reciprocalRankFusion(_ rankings: [[String]], k: Double = 60) -> [String] {
         var scores: [String: Double] = [:]
+        var bestOffset: [String: Int] = [:]
         var order: [String] = []
         for ranking in rankings {
             for (offset, id) in ranking.enumerated() {
                 if scores[id] == nil { order.append(id) }
                 scores[id, default: 0] += 1 / (k + Double(offset + 1))
+                bestOffset[id] = min(bestOffset[id] ?? offset, offset)
             }
+        }
+        for (id, offset) in bestOffset {
+            scores[id]! += offset == 0 ? 0.05 : offset <= 2 ? 0.02 : 0
         }
         return order.enumerated().sorted { (scores[$0.element]!, $1.offset) > (scores[$1.element]!, $0.offset) }.map(\.element)
     }
@@ -322,11 +329,17 @@ extension SearchIndex {
     }
 
     /// The best chunk per note by cosine similarity, over chunks of the query's own model only.
-    private func vectorHits(_ query: String, embedder: Embedder, limit: Int) throws -> [VectorHit] {
+    private func vectorHits(_ query: String, embedder: Embedder, limit: Int, folder: String?) throws -> [VectorHit] {
         guard let model = embedder.modelID(for: query), embedder.isReady(model),
               let queryVector = try? embedder.embed(query, modelID: model, kind: .query) else { return [] }
         var best: [String: VectorHit] = [:]
-        _ = try db.rows("SELECT note_id, path, text, vec FROM chunks WHERE model = ?1", [.text(model)]) { row -> Void in
+        let sql = folder == nil
+            ? "SELECT note_id, path, text, vec FROM chunks WHERE model = ?1"
+            : """
+              SELECT c.note_id, c.path, c.text, c.vec FROM chunks c JOIN notes n ON n.id = c.note_id
+              JOIN notes_fts f ON f.rowid = n.rowid WHERE c.model = ?1 AND f.folder = ?2
+              """
+        _ = try db.rows(sql, [.text(model)] + (folder.map { [.text($0)] } ?? [])) { row -> Void in
             let blob = SQLiteConnection.blob(row, 3)
             guard blob.count == queryVector.count * MemoryLayout<Float>.size else { return }
             var score: Float = 0
@@ -340,9 +353,9 @@ extension SearchIndex {
 
     /// Fuses the top 50 notes of full-text search and of vector search by reciprocal rank fusion.
     /// With no comparable vectors the order is the full-text order.
-    public func hybridSearch(_ query: String, embedder: Embedder?, limit: Int = 20) throws -> [HybridResult] {
-        let text = try search(query, limit: 50)
-        let vectors = try embedder.map { try vectorHits(query, embedder: $0, limit: 50) } ?? []
+    public func hybridSearch(_ query: String, embedder: Embedder?, limit: Int = 20, folder: String? = nil) throws -> [HybridResult] {
+        let text = try search(query, limit: 50, folder: folder)
+        let vectors = try embedder.map { try vectorHits(query, embedder: $0, limit: 50, folder: folder) } ?? []
         let textByID = Dictionary(text.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let vectorByID = Dictionary(vectors.map { ($0.noteID, $0) }, uniquingKeysWith: { first, _ in first })
         var results: [HybridResult] = []

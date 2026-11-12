@@ -1,0 +1,150 @@
+{
+ "cases": [
+  {
+   "query": "Tokyo",
+   "expected": [
+    "n02"
+   ]
+  },
+  {
+   "query": "bm25",
+   "expected": [
+    "n05"
+   ]
+  },
+  {
+   "query": "김치찌개",
+   "expected": [
+    "n06"
+   ]
+  },
+  {
+   "query": "sourdough",
+   "expected": [
+    "n07"
+   ]
+  },
+  {
+   "query": "borrow checker",
+   "expected": [
+    "n32"
+   ]
+  },
+  {
+   "query": "기타 코드",
+   "expected": [
+    "n16"
+   ]
+  },
+  {
+   "query": "조깅했던",
+   "expected": [
+    "n01"
+   ]
+  },
+  {
+   "query": "끓였던 찌개",
+   "expected": [
+    "n06"
+   ]
+  },
+  {
+   "query": "읽었던 책",
+   "expected": [
+    "n10"
+   ]
+  },
+  {
+   "query": "예약했던 병원",
+   "expected": [
+    "n18"
+   ]
+  },
+  {
+   "query": "연습했던 코드",
+   "expected": [
+    "n16"
+   ]
+  },
+  {
+   "query": "보관했던 원두",
+   "expected": [
+    "n29"
+   ]
+  },
+  {
+   "query": "automobile service",
+   "expected": [
+    "n21"
+   ]
+  },
+  {
+   "query": "money spent each month",
+   "expected": [
+    "n08",
+    "n09"
+   ]
+  },
+  {
+   "query": "exercise for running a long distance",
+   "expected": [
+    "n25",
+    "n01"
+   ]
+  },
+  {
+   "query": "잠 잘 자는 방법",
+   "expected": [
+    "n17"
+   ]
+  },
+  {
+   "query": "식물 키우기",
+   "expected": [
+    "n20",
+    "n19"
+   ]
+  },
+  {
+   "query": "relocating to a new apartment",
+   "expected": [
+    "n30",
+    "n31"
+   ]
+  },
+  {
+   "query": "계좌 보안",
+   "expected": [
+    "n23"
+   ]
+  },
+  {
+   "query": "oven loaf fermentation",
+   "expected": [
+    "n07"
+   ]
+  },
+  {
+   "query": "film recommendations",
+   "expected": [
+    "n26",
+    "n27"
+   ]
+  },
+  {
+   "query": "vacation destination",
+   "expected": [
+    "n36",
+    "n02"
+   ]
+  },
+  {
+   "query": "quantum chromodynamics",
+   "expected": []
+  },
+  {
+   "query": "블록체인 투자",
+   "expected": []
+  }
+ ]
+}

@@ -1,0 +1,220 @@
+{
+ "notes": [
+  {
+   "id": "n01",
+   "title": "아침 조깅 기록",
+   "folder": "Health",
+   "body": "매일 아침 한강에서 조깅을 했다. 5km를 30분에 달렸다."
+  },
+  {
+   "id": "n02",
+   "title": "Tokyo trip plan",
+   "folder": "Travel",
+   "body": "Flight to Tokyo on March 3. Hotel in Shinjuku. Visit Senso-ji temple and Tsukiji market."
+  },
+  {
+   "id": "n03",
+   "title": "도쿄 여행 맛집",
+   "folder": "Travel",
+   "body": "신주쿠에서 라멘을 먹었다. 츠키지 시장의 초밥이 맛있었다."
+  },
+  {
+   "id": "n04",
+   "title": "Swift concurrency notes",
+   "folder": "Dev",
+   "body": "Actors isolate mutable state. Use async let for parallel work. Sendable types cross isolation boundaries."
+  },
+  {
+   "id": "n05",
+   "title": "SQLite FTS5 tips",
+   "folder": "Dev",
+   "body": "FTS5 supports bm25 ranking and prefix queries. Use the unicode61 tokenizer."
+  },
+  {
+   "id": "n06",
+   "title": "김치찌개 레시피",
+   "folder": "Food",
+   "body": "돼지고기와 신김치를 볶은 뒤 물을 붓고 끓인다. 두부를 넣고 10분 더 끓인다."
+  },
+  {
+   "id": "n07",
+   "title": "Sourdough bread",
+   "folder": "Food",
+   "body": "Feed the starter twice a day. Bake at 230 degrees with steam for a crisp crust."
+  },
+  {
+   "id": "n08",
+   "title": "2024 가계부 정리",
+   "folder": "Finance",
+   "body": "월세 70만원, 식비 40만원, 교통비 8만원. 저축 목표는 월 100만원."
+  },
+  {
+   "id": "n09",
+   "title": "Quarterly budget review",
+   "folder": "Finance",
+   "body": "Cloud spend rose 12 percent. Cut unused staging servers to save money."
+  },
+  {
+   "id": "n10",
+   "title": "독서 목록",
+   "folder": "Books",
+   "body": "사피엔스를 읽고 있다. 다음 책은 총 균 쇠."
+  },
+  {
+   "id": "n11",
+   "title": "Book review: Deep Work",
+   "folder": "Books",
+   "body": "Cal Newport argues that focused work without distraction produces valuable output."
+  },
+  {
+   "id": "n12",
+   "title": "주간 회의록",
+   "folder": "Work",
+   "body": "다음 분기 로드맵을 논의했다. 출시일은 6월로 정했다."
+  },
+  {
+   "id": "n13",
+   "title": "Standup notes",
+   "folder": "Work",
+   "body": "Blocked on the API review. Deploy scheduled for Friday."
+  },
+  {
+   "id": "n14",
+   "title": "영어 단어장",
+   "folder": "Study",
+   "body": "ubiquitous 어디에나 있는. ephemeral 일시적인."
+  },
+  {
+   "id": "n15",
+   "title": "Guitar practice",
+   "folder": "Hobby",
+   "body": "Practice the pentatonic scale for 20 minutes. Work on barre chords."
+  },
+  {
+   "id": "n16",
+   "title": "기타 코드 연습",
+   "folder": "Hobby",
+   "body": "F 코드가 어렵다. 바레 코드 연습을 매일 15분씩 한다."
+  },
+  {
+   "id": "n17",
+   "title": "Sleep hygiene",
+   "folder": "Health",
+   "body": "Avoid screens one hour before bed. Keep the bedroom cool and dark. 카페인은 오후 2시 이후 피한다."
+  },
+  {
+   "id": "n18",
+   "title": "병원 예약",
+   "folder": "Health",
+   "body": "치과 검진은 다음 주 화요일 오후 3시."
+  },
+  {
+   "id": "n19",
+   "title": "Gardening",
+   "folder": "Home",
+   "body": "Tomatoes need six hours of sun. Water the basil in the morning."
+  },
+  {
+   "id": "n20",
+   "title": "베란다 화분 관리",
+   "folder": "Home",
+   "body": "방울토마토에 물을 주고 바질 잎을 땄다."
+  },
+  {
+   "id": "n21",
+   "title": "Car maintenance",
+   "folder": "Home",
+   "body": "Oil change every 10000 km. Replace brake pads when they squeal."
+  },
+  {
+   "id": "n22",
+   "title": "자동차 보험 갱신",
+   "folder": "Finance",
+   "body": "보험 만기는 11월 30일. 다이렉트 보험이 더 저렴하다."
+  },
+  {
+   "id": "n23",
+   "title": "Password manager",
+   "folder": "Dev",
+   "body": "Use a password manager and enable two-factor authentication on every account."
+  },
+  {
+   "id": "n24",
+   "title": "git rebase 정리",
+   "folder": "Dev",
+   "body": "git rebase -i 로 커밋을 합친다. force push 전에는 브랜치를 확인한다."
+  },
+  {
+   "id": "n25",
+   "title": "Marathon training plan",
+   "folder": "Health",
+   "body": "Long run on Sundays. Increase weekly mileage by 10 percent."
+  },
+  {
+   "id": "n26",
+   "title": "Movie list",
+   "folder": "Hobby",
+   "body": "Watch Parasite again. Interstellar for the weekend."
+  },
+  {
+   "id": "n27",
+   "title": "영화 감상 메모",
+   "folder": "Hobby",
+   "body": "기생충은 계단의 상징이 인상적이었다."
+  },
+  {
+   "id": "n28",
+   "title": "Coffee brewing",
+   "folder": "Food",
+   "body": "Pour-over at 93 degrees. Grind size medium-fine. Bloom for 30 seconds."
+  },
+  {
+   "id": "n29",
+   "title": "커피 원두 보관",
+   "folder": "Food",
+   "body": "원두는 밀폐 용기에 담아 서늘한 곳에 둔다."
+  },
+  {
+   "id": "n30",
+   "title": "Moving checklist",
+   "folder": "Home",
+   "body": "Transfer utilities, update address, book the moving truck."
+  },
+  {
+   "id": "n31",
+   "title": "이사 준비",
+   "folder": "Home",
+   "body": "이삿짐센터 견적을 세 군데에서 받았다. 전입신고를 잊지 말 것."
+  },
+  {
+   "id": "n32",
+   "title": "Learning Rust",
+   "folder": "Dev",
+   "body": "Ownership and borrowing prevent data races. The borrow checker is strict but helpful."
+  },
+  {
+   "id": "n33",
+   "title": "SwiftUI 레이아웃",
+   "folder": "Dev",
+   "body": "VStack과 HStack으로 화면을 구성한다. Spacer로 여백을 만든다."
+  },
+  {
+   "id": "n34",
+   "title": "Language exchange",
+   "folder": "Study",
+   "body": "Meet on Thursdays to practice Korean conversation."
+  },
+  {
+   "id": "n35",
+   "title": "Wedding gift ideas",
+   "folder": "Personal",
+   "body": "A handmade ceramic set for the couple."
+  },
+  {
+   "id": "n36",
+   "title": "여름 휴가 계획",
+   "folder": "Travel",
+   "body": "제주도에서 일주일. 렌터카를 예약하고 해변 근처 숙소를 찾는다."
+  }
+ ]
+}
