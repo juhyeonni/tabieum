@@ -372,15 +372,6 @@ public struct MCPServer: Sendable {
         return (modified, String(parts[1]))
     }
 
-    /// Keyword results with their reciprocal-rank-fusion score, as hybrid search scores them.
-    static func scoredFields(_ found: [SearchResult]) -> [[String: Any]] {
-        zip(found, SearchIndex.scoredFusion([found.map(\.id)])).map {
-            var hit = fields($0)
-            hit["score"] = $1.score
-            return hit
-        }
-    }
-
     static func fields(_ note: SearchResult) -> [String: Any] {
         ["id": note.id, "title": note.title, "folder": note.folder,
          "modified": ISO8601DateFormatter().string(from: note.modified), "snippet": note.snippet]
@@ -416,5 +407,16 @@ extension SearchIndex {
                           ownerIdentifier: nil),
              SQLiteConnection.text($0, 4))
         }.first
+    }
+}
+
+extension MCPServer {
+    /// Keyword results with their reciprocal-rank-fusion score, as hybrid search scores them.
+    static func scoredFields(_ found: [SearchResult]) -> [[String: Any]] {
+        zip(found, SearchIndex.scoredFusion([found.map(\.id)])).map {
+            var hit = fields($0)
+            hit["score"] = $1.score
+            return hit
+        }
     }
 }
