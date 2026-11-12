@@ -132,7 +132,56 @@ private func errorCode(_ message: [String: Any]) -> Int? {
         let tools = try #require((message["result"] as? [String: Any])?["tools"] as? [[String: Any]])
         let schema = try #require(tools.first { $0["name"] as? String == "search_notes" }?["inputSchema"] as? [String: Any])
         #expect((schema["properties"] as? [String: Any])?["folder"] != nil)
-        #expect(schema["required"] as? [String] == ["query"])
+        #expect(schema["required"] == nil)
+        #expect((schema["properties"] as? [String: Any])?["queries"] != nil)
+    }
+
+    @Test func lexAndVecItemsAreFusedIntoOneList() throws {
+        let s = server(try fixtureIndex(vectors: true), rag: true)
+        let rows = try hits(callTool(s, "search_notes", #"{"queries":[{"type":"lex","text":"apple"},{"type":"vec","text":"car"}],"k":50}"#).text)
+        let ids = rows.compactMap { $0["id"] as? String }
+        #expect(ids.contains("car") && ids.contains("n1"))
+        let scores = rows.compactMap { $0["score"] as? Double }
+        #expect(scores == scores.sorted(by: >))
+    }
+
+    @Test func queryCountsTwiceBesideQueries() throws {
+        let s = server(try fixtureIndex(vectors: true), rag: true)
+        let rows = try hits(callTool(s, "search_notes", #"{"query":"automobile","queries":[{"type":"lex","text":"apple"}]}"#).text)
+        let car = try #require(rows.first { $0["id"] as? String == "car" }?["score"] as? Double)
+        let apple = try #require(rows.first { $0["id"] as? String == "n1" }?["score"] as? Double)
+        #expect(rows.first?["id"] as? String == "car" && car > apple)
+        #expect(abs(car - (4.0 / 61 + 0.05)) < 1e-9)
+    }
+
+    @Test func vecItemFallsBackToKeywordsWithoutVectors() throws {
+        let s = server(try fixtureIndex(), rag: true)
+        let rows = try hits(callTool(s, "search_notes", #"{"queries":[{"type":"vec","text":"apple"}]}"#).text)
+        #expect(rows.count == 10 && rows.allSatisfy { $0["similarity"] == nil })
+    }
+
+    @Test func eachTypeSearchesOnlyItsOwnWay() throws {
+        let s = server(try fixtureIndex(vectors: true), rag: true)
+        let vec = try hits(callTool(s, "search_notes", #"{"queries":[{"type":"vec","text":"apple"}],"k":50}"#).text)
+        #expect(vec.allSatisfy { $0["id"] as? String == "car" })
+        let lex = try hits(callTool(s, "search_notes", #"{"queries":[{"type":"lex","text":"car"}]}"#).text)
+        #expect(lex.isEmpty)
+    }
+
+    @Test func queriesRespectFolder() throws {
+        let s = server(try fixtureIndex(vectors: true), rag: true)
+        let rows = try hits(callTool(s, "search_notes", #"{"queries":[{"type":"lex","text":"apple"},{"type":"vec","text":"car"}],"folder":"Home"}"#).text)
+        #expect(!rows.isEmpty && rows.allSatisfy { $0["folder"] as? String == "Home" })
+    }
+
+    @Test func badSearchArgumentsReturnToolErrors() throws {
+        let s = server(try fixtureIndex())
+        let eleven = Array(repeating: #"{"type":"lex","text":"a"}"#, count: 11).joined(separator: ",")
+        for arguments in ["{}", #"{"queries":[{"type":"hyde","text":"a"}]}"#, #"{"queries":[{"type":"lex","text":""}]}"#,
+                          #"{"queries":[]}"#, #"{"queries":[\#(eleven)]}"#] {
+            let answer = try callTool(s, "search_notes", arguments)
+            #expect(answer.isError && !answer.text.isEmpty, "\(arguments.prefix(40))")
+        }
     }
 
     @Test func getNoteReturnsMarkdownOrError() throws {
