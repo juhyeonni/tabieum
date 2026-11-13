@@ -29,7 +29,7 @@ struct IndexedNote {
 
 /// A full-text index of readable notes in one SQLite file. It is a cache: everything in it can be rebuilt from Notes.
 public final class SearchIndex: @unchecked Sendable {
-    static let schemaVersion = 5
+    static let schemaVersion = 6
 
     public static func defaultURL(bundleIdentifier: String) -> URL {
         FileManager.default.homeDirectoryForCurrentUser
