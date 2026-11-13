@@ -211,9 +211,13 @@ struct TestError: Error {
                         "ZTYPEUTI": NoteLink.linkAttachmentUTI, "ZTOKENCONTENTIDENTIFIER": target])
     try library.insert(["Z_PK": 201, "Z_ENT": 5, "ZIDENTIFIER": "ATT-IMG", "ZNOTE": 100,
                         "ZTYPEUTI": "public.jpeg", "ZTOKENCONTENTIDENTIFIER": "x"])
+    let renamedTarget = "applenotes:note/00000000-0000-0000-0000-000000000003"
+    try library.insert(["Z_PK": 202, "Z_ENT": 9, "ZIDENTIFIER": "ATT-LINK1", "ZNOTE": 100,
+                        "ZTYPEUTI1": NoteLink.linkAttachmentUTI, "ZTOKENCONTENTIDENTIFIER": renamedTarget])
     let reader = try NotesReader(databaseURL: library.url)
 
-    #expect(try reader.attachmentLinkTargets(ids: ["ATT-LINK", "ATT-IMG", "ATT-NONE"]) == ["ATT-LINK": target])
+    #expect(try reader.attachmentLinkTargets(ids: ["ATT-LINK", "ATT-IMG", "ATT-NONE", "ATT-LINK1"])
+        == ["ATT-LINK": target, "ATT-LINK1": renamedTarget])
     #expect(try reader.attachmentLinkTargets(ids: []).isEmpty)
     #expect(try reader.noteIdentifier(key: 100) == "N-100")
     #expect(try reader.noteIdentifier(key: 10) == nil)

@@ -95,7 +95,7 @@ public final class NotesReader {
                 + columns.filter { $0.hasPrefix("ZACCOUNT") && Int($0.dropFirst(8)) != nil }
                     .sorted { Int($0.dropFirst(8))! < Int($1.dropFirst(8))! }
 
-            hasLinkTargets = columns.isSuperset(of: ["ZTYPEUTI", "ZTOKENCONTENTIDENTIFIER"])
+            hasLinkTargets = !typeColumns.isEmpty && columns.contains("ZTOKENCONTENTIDENTIFIER")
 
             var missing = Self.requiredColumns.filter { !columns.contains($0) }
             if titleColumns.isEmpty { missing.append("ZTITLE") }
@@ -223,7 +223,8 @@ public final class NotesReader {
         let list = ids.map { "'" + $0.replacingOccurrences(of: "'", with: "''") + "'" }.joined(separator: ", ")
         let pairs = try query("""
             SELECT ZIDENTIFIER, ZTOKENCONTENTIDENTIFIER FROM \(Self.objects)
-            WHERE ZTYPEUTI = '\(NoteLink.linkAttachmentUTI)' AND ZIDENTIFIER IN (\(list))
+            WHERE coalesce(\((typeColumns + ["NULL"]).joined(separator: ", "))) = '\(NoteLink.linkAttachmentUTI)'
+              AND ZIDENTIFIER IN (\(list))
               AND ZTOKENCONTENTIDENTIFIER IS NOT NULL
             """) { (Self.text($0, 0) ?? "", Self.text($0, 1) ?? "") }
         return Dictionary(pairs, uniquingKeysWith: { first, _ in first })
