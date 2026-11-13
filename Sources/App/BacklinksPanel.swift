@@ -9,7 +9,17 @@ extension CurrentNote {
     static func open(keysForTitle: (String) throws -> [Int]) throws -> Match {
         var ids: [String] = []
         var error: NSDictionary?
-        if let result = NSAppleScript(source: #"tell application "Notes" to get id of selection"#)?.executeAndReturnError(&error) {
+        // `id of selection` fails with -1700 on macOS 26; `selection` has to be evaluated first.
+        let selectionIDs = """
+            tell application "Notes"
+                set ids to {}
+                repeat with n in (get selection)
+                    set end of ids to id of n
+                end repeat
+                return ids
+            end tell
+            """
+        if let result = NSAppleScript(source: selectionIDs)?.executeAndReturnError(&error) {
             ids = result.numberOfItems > 0
                 ? (1...result.numberOfItems).compactMap { result.atIndex($0)?.stringValue }
                 : [result.stringValue].compactMap { $0 }
