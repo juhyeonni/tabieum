@@ -23,7 +23,7 @@ public enum UpdateCheck {
     }
 
     /// The release page must be on github.com over https, because the app opens it.
-    public static func latest(from data: Data, product: String? = nil) -> Release? {
+    public static func latest(from data: Data, product: String? = nil, repository: String? = nil) -> Release? {
         guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let tag = json["tag_name"] as? String,
               let page = (json["html_url"] as? String).flatMap(URL.init(string:)),
@@ -32,19 +32,29 @@ public enum UpdateCheck {
         let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
         let assets = json["assets"] as? [[String: Any]] ?? []
         let zipName = product.map { "\($0)-\(version).zip" }
+        func asset(_ name: String?) -> URL? {
+            guard let name, let repository else { return nil }
+            return Self.asset(named: name, in: assets, repository: repository)
+        }
         return Release(
             version: version, url: page, notes: json["body"] as? String ?? "",
-            zip: zipName.flatMap { asset(named: $0, in: assets) },
-            checksum: zipName.flatMap { asset(named: $0 + ".sha256", in: assets) }
+            zip: asset(zipName),
+            checksum: asset(zipName.map { $0 + ".sha256" })
         )
     }
 
-    /// The app downloads from this address, so it gets the same rule as the page address.
-    private static func asset(named name: String, in assets: [[String: Any]]) -> URL? {
+    /// The app downloads from this address, so it must lie in the release downloads of its own repository.
+    public static func isReleaseAsset(_ url: URL, repository: String) -> Bool {
+        url.scheme == "https" && url.host == "github.com" && url.port == nil && url.user == nil
+            && !url.pathComponents.contains("..")
+            && url.path.hasPrefix("/\(repository)/releases/download/")
+    }
+
+    private static func asset(named name: String, in assets: [[String: Any]], repository: String) -> URL? {
         assets.lazy
             .filter { $0["name"] as? String == name }
             .compactMap { ($0["browser_download_url"] as? String).flatMap(URL.init(string:)) }
-            .first { $0.scheme == "https" && $0.host == "github.com" && $0.path.contains("/releases/download/") }
+            .first { isReleaseAsset($0, repository: repository) }
     }
 
     /// Reads the first non-empty line of a `shasum -a 256` file.

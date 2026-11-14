@@ -88,7 +88,7 @@ public enum ModelInstaller {
         var finished: Int64 = 0
         for file in source.files {
             let base = finished
-            let downloaded = try await Downloader.download(file.url) { progress((Double(base) + Double($0)) / total * 0.95) }
+            let downloaded = try await Downloader.download(file.url) { written, _ in progress((Double(base) + Double(written)) / total * 0.95) }
             defer { try? fileManager.removeItem(at: downloaded) }
             guard try sha256(of: downloaded) == file.sha256 else {
                 throw ModelDownloadError(description: "\(file.name) does not match its checksum")
@@ -133,27 +133,50 @@ public enum ModelInstaller {
     }
 }
 
-private final class Downloader: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
-    private let report: @Sendable (Int64) -> Void
+final class Downloader: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    private let report: @Sendable (Int64, Int64) -> Void
+    private let lock = NSLock()
     private var continuation: CheckedContinuation<URL, Error>?
+    private var task: URLSessionDownloadTask?
+    private var cancelled = false
 
-    private init(report: @escaping @Sendable (Int64) -> Void) {
+    private init(report: @escaping @Sendable (Int64, Int64) -> Void) {
         self.report = report
     }
 
-    static func download(_ url: URL, report: @escaping @Sendable (Int64) -> Void) async throws -> URL {
+    /// Reports bytes written and bytes expected (negative when unknown). Cancelling the calling task stops the transfer.
+    static func download(_ url: URL, report: @escaping @Sendable (Int64, Int64) -> Void) async throws -> URL {
         let downloader = Downloader(report: report)
         let session = URLSession(configuration: .ephemeral, delegate: downloader, delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
-        return try await withCheckedThrowingContinuation { continuation in
-            downloader.continuation = continuation
-            session.downloadTask(with: url).resume()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                downloader.continuation = continuation
+                downloader.start(session.downloadTask(with: url))
+            }
+        } onCancel: {
+            downloader.cancel()
         }
+    }
+
+    private func start(_ task: URLSessionDownloadTask) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !cancelled else { return finish(.failure(CancellationError())) }
+        self.task = task
+        task.resume()
+    }
+
+    private func cancel() {
+        lock.lock()
+        defer { lock.unlock() }
+        cancelled = true
+        task?.cancel()
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,
                     totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-        report(totalBytesWritten)
+        report(totalBytesWritten, totalBytesExpectedToWrite)
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {

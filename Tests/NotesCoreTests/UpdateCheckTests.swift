@@ -54,7 +54,7 @@ private let downloads = "https://github.com/me/app/releases/download/v1.2.0/"
         ("App-1.2.0.zip", downloads + "App-1.2.0.zip"),
         ("App-1.2.0.zip.sha256", downloads + "App-1.2.0.zip.sha256")
     ])
-    let found = UpdateCheck.latest(from: data, product: "App")
+    let found = UpdateCheck.latest(from: data, product: "App", repository: "me/app")
     #expect(found?.notes == "Notes")
     #expect(found?.zip?.absoluteString == downloads + "App-1.2.0.zip")
     #expect(found?.checksum?.absoluteString == downloads + "App-1.2.0.zip.sha256")
@@ -62,7 +62,7 @@ private let downloads = "https://github.com/me/app/releases/download/v1.2.0/"
 
 @Test func releaseWithoutBodyOrAssetsStillParses() {
     for data in [body(), release(body: nil, assets: [])] {
-        let found = UpdateCheck.latest(from: data, product: "App")
+        let found = UpdateCheck.latest(from: data, product: "App", repository: "me/app")
         #expect(found?.version == "1.2.0")
         #expect(found?.notes == "")
         #expect(found?.zip == nil && found?.checksum == nil)
@@ -74,13 +74,13 @@ private let downloads = "https://github.com/me/app/releases/download/v1.2.0/"
         ("App-1.2.0.zip", "https://example.com/releases/download/App-1.2.0.zip"),
         ("App-1.2.0.zip.sha256", "http://github.com/me/app/releases/download/v1.2.0/App-1.2.0.zip.sha256")
     ])
-    #expect(UpdateCheck.latest(from: data, product: "App")?.zip == nil)
-    #expect(UpdateCheck.latest(from: data, product: "App")?.checksum == nil)
+    #expect(UpdateCheck.latest(from: data, product: "App", repository: "me/app")?.zip == nil)
+    #expect(UpdateCheck.latest(from: data, product: "App", repository: "me/app")?.checksum == nil)
     let other = release(assets: [
         ("App-1.2.0.zip", "https://github.com/me/app/raw/main/App-1.2.0.zip"),
         ("App-1.2.0.zip.sha256", downloads + "App-1.2.0.zip.sha256")
     ])
-    let found = UpdateCheck.latest(from: other, product: "App")
+    let found = UpdateCheck.latest(from: other, product: "App", repository: "me/app")
     #expect(found?.zip == nil)
     #expect(found?.checksum != nil)
 }
@@ -92,7 +92,7 @@ private let downloads = "https://github.com/me/app/releases/download/v1.2.0/"
         ("App-1.2.0.dmg", downloads + "App-1.2.0.dmg"),
         ("App-1.2.0.zip", downloads + "App-1.2.0.zip")
     ])
-    let found = UpdateCheck.latest(from: data, product: "App")
+    let found = UpdateCheck.latest(from: data, product: "App", repository: "me/app")
     #expect(found?.zip?.lastPathComponent == "App-1.2.0.zip")
     #expect(found?.checksum == nil)
     #expect(UpdateCheck.latest(from: data)?.zip == nil)
