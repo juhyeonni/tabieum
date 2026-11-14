@@ -17,7 +17,7 @@ enum UpdateAction {
             if (response as? HTTPURLResponse)?.statusCode == 404 {
                 return show("No release yet", "\(name) \(current) is the only version so far.")
             }
-            guard let release = UpdateCheck.latest(from: data, product: name) else {
+            guard let release = UpdateCheck.latest(from: data, product: name, repository: ProductInfo.main?.repository) else {
                 return show("Couldn't check for updates", "GitHub sent an answer this app does not understand.")
             }
             guard UpdateCheck.isNewer(release.version, than: current) else {
