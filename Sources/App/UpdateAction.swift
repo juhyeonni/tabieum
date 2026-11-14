@@ -24,13 +24,50 @@ enum UpdateAction {
                 return show("You're up to date", "\(name) \(current) is the latest version.")
             }
             let kind = UpdateCheck.installKind(bundlePath: Bundle.main.bundlePath, product: name)
-            present(UpdatePrompt(release: release, current: current, kind: kind, product: name), release.url)
+            let prompt = UpdatePrompt(release: release, current: current, kind: kind, product: name)
+            if present(prompt, release.url) == .install { await install(release, current: current, product: name) }
         } catch {
             show("Couldn't check for updates", "Check your internet connection and try again.")
         }
     }
 
-    private static func present(_ prompt: UpdatePrompt, _ page: URL) {
+    private static func install(_ release: Release, current: String, product: String) async {
+        guard let repository = ProductInfo.main?.repository else { return }
+        let installed = Bundle.main.bundleURL
+        let window = UpdateProgressWindow()
+        let task = Task {
+            try await UpdateStager.stage(
+                release, installed: installed, runningVersion: current, product: product, repository: repository,
+                progress: { fraction in Task { @MainActor in window.show(fraction < 1 ? .downloading : .verifying, fraction) } })
+        }
+        window.onCancel = { task.cancel() }
+        window.show(.downloading, 0)
+        do {
+            let staged = try await task.value
+            window.show(.replacing, 0)
+            try UpdateInstaller.install(staged, over: installed, isCancelled: { false }, beginSwap: window.lockCancel)
+            window.show(.relaunching, 0)
+            try UpdateRelaunch.launch(app: installed)
+            NSApp.terminate(nil)
+        } catch {
+            window.close()
+            let failure = error as? UpdateFailure ?? .replaceFailed(error.localizedDescription)
+            if failure != .cancelled { showFailure(failure, release: release, product: product) }
+        }
+    }
+
+    private static func showFailure(_ failure: UpdateFailure, release: Release, product: String) {
+        let prompt = UpdateFailurePrompt(failure: failure, product: product, version: release.version)
+        let alert = NSAlert()
+        alert.messageText = prompt.title
+        alert.informativeText = prompt.info
+        prompt.buttons.forEach { alert.addButton(withTitle: $0.title) }
+        NSApp.activate()
+        let index = alert.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        if prompt.buttons[index].action == .openReleasePage { NSWorkspace.shared.open(release.url) }
+    }
+
+    private static func present(_ prompt: UpdatePrompt, _ page: URL) -> UpdatePrompt.Action {
         let alert = NSAlert()
         alert.messageText = prompt.title
         alert.informativeText = prompt.info
@@ -38,13 +75,15 @@ enum UpdateAction {
         if !prompt.notes.isEmpty { alert.accessoryView = notesView(prompt.notes) }
         NSApp.activate()
         let index = alert.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
-        switch prompt.buttons[index].action {
+        let action = prompt.buttons[index].action
+        switch action {
         case .openReleasePage: NSWorkspace.shared.open(page)
         case .copyCommand:
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(prompt.command ?? "", forType: .string)
-        case .later: break
+        case .install, .later, .close: break
         }
+        return action
     }
 
     private static func notesView(_ blocks: [NotesBlock]) -> NSView {
