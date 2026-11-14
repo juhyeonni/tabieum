@@ -63,24 +63,16 @@ enum UpdateAction {
 
     private static func showFailure(_ failure: UpdateFailure, release: Release, product: String) {
         let prompt = UpdateFailurePrompt(failure: failure, product: product, version: release.version)
-        let alert = NSAlert()
-        alert.messageText = prompt.title
-        alert.informativeText = prompt.info
-        prompt.buttons.forEach { alert.addButton(withTitle: $0.title) }
-        NSApp.activate()
-        let index = alert.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        let window = UpdatePromptWindow(
+            title: prompt.title, text: prompt.info, notes: [], buttonTitles: prompt.buttons.map(\.title))
+        let index = window.run()
         if prompt.buttons[index].action == .openReleasePage { NSWorkspace.shared.open(release.url) }
     }
 
     private static func present(_ prompt: UpdatePrompt, _ page: URL) -> UpdatePrompt.Action {
-        let alert = NSAlert()
-        alert.messageText = prompt.title
-        alert.informativeText = prompt.info
-        prompt.buttons.forEach { alert.addButton(withTitle: $0.title) }
-        if !prompt.notes.isEmpty { alert.accessoryView = notesView(prompt.notes) }
-        NSApp.activate()
-        let index = alert.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
-        let action = prompt.buttons[index].action
+        let window = UpdatePromptWindow(
+            title: prompt.title, text: prompt.info, notes: prompt.notes, buttonTitles: prompt.buttons.map(\.title))
+        let action = prompt.buttons[window.run()].action
         switch action {
         case .openReleasePage: NSWorkspace.shared.open(page)
         case .copyCommand:
@@ -89,34 +81,6 @@ enum UpdateAction {
         case .install, .later, .close: break
         }
         return action
-    }
-
-    private static func notesView(_ blocks: [NotesBlock]) -> NSView {
-        let text = NSMutableAttributedString()
-        for block in blocks {
-            let (source, font): (String, NSFont) = switch block {
-            case .heading(let line): (line, .boldSystemFont(ofSize: 13))
-            case .bullet(let line): ("•  " + line, .systemFont(ofSize: 12))
-            case .code(let lines): (lines, .monospacedSystemFont(ofSize: 11, weight: .regular))
-            case .paragraph(let line): (line, .systemFont(ofSize: 12))
-            }
-            let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-            let styled = (try? AttributedString(markdown: source, options: options))
-                .map(NSAttributedString.init) ?? NSAttributedString(string: source)
-            let piece = NSMutableAttributedString(attributedString: styled)
-            let whole = NSRange(location: 0, length: piece.length)
-            piece.addAttributes([.font: font, .foregroundColor: NSColor.labelColor], range: whole)
-            text.append(piece)
-            text.append(NSAttributedString(string: "\n"))
-        }
-        let view = NSTextView(frame: NSRect(x: 0, y: 0, width: 360, height: 160))
-        view.isEditable = false
-        view.drawsBackground = false
-        view.textStorage?.setAttributedString(text)
-        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 360, height: 160))
-        scroll.hasVerticalScroller = true
-        scroll.documentView = view
-        return scroll
     }
 
     private static func show(_ title: String, _ detail: String) {
