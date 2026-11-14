@@ -15,6 +15,14 @@ The app lives in the menu bar and has no Dock icon.
 - **Markdown shortcuts:** type Markdown while you write and the matching Notes style is applied. Each one can be turned off in Settings > Editor.
 - **Templates and slash commands:** type `/` in a note to insert a template from a folder you choose, apply a style, run a command, or insert a table with `/table` (3 by 3) or `/table4x2` (columns by rows, up to 10 by 20). `/today`, `/tomorrow`, `/yesterday` and `/now` insert an ISO date (`2026-10-20`, or `2026-10-20 10:10` for `/now`); add four digits for a time, as in `/tomorrow0930`.
 
+### Updating
+
+- **Update window:** **Check for Updates…** in the menu (or Settings > About) asks GitHub once for the latest release. If it is newer, a window shows its release notes. Nothing is checked on its own.
+- **Install and Relaunch:** for a copy the app can replace, this downloads the release zip and its `.sha256` file, checks the checksum and that the new app has the same signing certificate, swaps it in for the old one (which goes to the Trash) and opens it. Nothing is sent to GitHub except the download requests.
+- **Homebrew:** a copy installed with Homebrew is not replaced by the app. The window offers **Copy Command** for `brew upgrade --cask tabieum`; relaunch afterwards.
+- **Copies that cannot be replaced:** an app in a folder you cannot write to, or one running from a temporary (translocated) location after being opened from a download, is left alone. The window offers **Open Release Page** instead; move the app to /Applications and open it again.
+- **Relaunch to Finish Updating:** if the app on disk is newer than the running one (for example after `brew upgrade`), the menu shows **Relaunch to Finish Updating (x.y.z)** above **Check for Updates…**. It reads one local file when the menu opens, makes no network request, and is absent otherwise. Choosing it quits and reopens the app.
+
 ## Options you turn on
 
 - **Vim mode:** Normal, Insert, Visual and Visual Line modes, operators and motions with counts, text objects, `/` search, `.` repeat, macros and marks, undo and redo. The cursor is a block in Normal and Visual mode and a bar in Insert mode, or always a bar. Inside tables and other blocks it cannot read reliably, Vim keys are limited. Undo and redo use Notes' own history, which merges a run of deletions into one step. Turn on **Undo one Vim command at a time** in Settings > Editor and `u` and `Ctrl-r` step through Vim commands instead; an insert session counts as one step, and the text they restore comes back as plain text, without bold, links or other formatting.

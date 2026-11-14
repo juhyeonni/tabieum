@@ -84,4 +84,10 @@ public enum UpdateCheck {
     public static func isNewer(_ latest: String, than current: String) -> Bool {
         latest.compare(current, options: .numeric) == .orderedDescending
     }
+
+    /// The version to offer a relaunch for: the one on disk, when it is newer than the running one.
+    public static func relaunchVersion(running: String, onDisk: String?) -> String? {
+        guard let onDisk, onDisk.wholeMatch(of: /\d+(\.\d+)*/) != nil, isNewer(onDisk, than: running) else { return nil }
+        return onDisk
+    }
 }

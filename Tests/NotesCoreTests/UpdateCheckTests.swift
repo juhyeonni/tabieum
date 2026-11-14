@@ -147,3 +147,12 @@ private let downloads = "https://github.com/me/app/releases/download/v1.2.0/"
         #expect(try !accepted(address), "\(address)")
     }
 }
+
+@Test func relaunchVersionIsTheNewerVersionOnDisk() {
+    #expect(UpdateCheck.relaunchVersion(running: "0.4.1", onDisk: "0.4.2") == "0.4.2")
+    #expect(UpdateCheck.relaunchVersion(running: "0.4.2", onDisk: "0.4.2") == nil)
+    #expect(UpdateCheck.relaunchVersion(running: "0.4.2", onDisk: "0.4.1") == nil)
+    #expect(UpdateCheck.relaunchVersion(running: "0.4.2", onDisk: nil) == nil)
+    #expect(UpdateCheck.relaunchVersion(running: "0.4.2", onDisk: "") == nil)
+    #expect(UpdateCheck.relaunchVersion(running: "0.4.2", onDisk: "garbage") == nil)
+}

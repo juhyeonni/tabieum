@@ -48,6 +48,7 @@ With the default settings Tabieum makes no network request and never checks for 
 | When | What goes out | Where to |
 |---|---|---|
 | You choose **Check for Updates…** | One request for the latest release | `api.github.com` |
+| You choose **Install and Relaunch** | The release zip and its `.sha256` file. Nothing is sent. | `github.com` |
 | You set up AI helpers and use them | The selected text or note, plus what "Ask my notes" finds | The server you set in Settings > AI Assistant |
 | You turn on semantic search | macOS downloads its embedding model once. No note text. | Apple |
 | You choose the tabieum-e5-small-coreml model | The model, once (about 234 MB, SHA-256 checked). No note text. | `huggingface.co` |
