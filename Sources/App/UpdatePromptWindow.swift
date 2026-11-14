@@ -5,7 +5,8 @@ import NotesCore
 @MainActor
 final class UpdatePromptWindow {
     let window = NSWindow(
-        contentRect: NSRect(x: 0, y: 0, width: 460, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
+        contentRect: NSRect(x: 0, y: 0, width: 460, height: 200), styleMask: [.titled], backing: .buffered,
+        defer: false)
     private(set) var buttons: [NSButton] = []
     private(set) var notesView: NSScrollView?
     private(set) var chosen = 0
@@ -19,7 +20,7 @@ final class UpdatePromptWindow {
             return button
         }
         buttons.first?.keyEquivalent = "\r"
-        buttons.last?.keyEquivalent = "\u{1b}"
+        if buttons.count > 1 { buttons.last?.keyEquivalent = "\u{1b}" }
 
         let heading = NSTextField(labelWithString: title)
         heading.font = .boldSystemFont(ofSize: 13)
