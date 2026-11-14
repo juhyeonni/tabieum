@@ -58,6 +58,41 @@ public protocol NoteWriter: Sendable {
     func moveToTrash(_ note: ResolvedNote) async throws
 }
 
+/// Calls `didWrite` after each successful write, so the search index can sync at once instead of at its next timer tick.
+public struct NotifyingNoteWriter: NoteWriter {
+    private let base: NoteWriter
+    private let didWrite: @Sendable () -> Void
+
+    public init(_ base: NoteWriter, didWrite: @escaping @Sendable () -> Void) {
+        self.base = base
+        self.didWrite = didWrite
+    }
+
+    public func folderExists(_ target: NoteTarget) async throws -> Bool {
+        try await base.folderExists(target)
+    }
+
+    public func createNote(title: String?, html: String, in target: NoteTarget) async throws -> CreatedNote {
+        let created = try await base.createNote(title: title, html: html, in: target)
+        didWrite()
+        return created
+    }
+
+    public func resolveNote(identifier: String, scope: WriteScope, target: NoteTarget) async throws -> ResolvedNote? {
+        try await base.resolveNote(identifier: identifier, scope: scope, target: target)
+    }
+
+    public func replaceBody(of note: ResolvedNote, with html: String) async throws {
+        try await base.replaceBody(of: note, with: html)
+        didWrite()
+    }
+
+    public func moveToTrash(_ note: ResolvedNote) async throws {
+        try await base.moveToTrash(note)
+        didWrite()
+    }
+}
+
 public struct ConfirmRequest: Equatable, Sendable {
     public let action: WriteAction
     public let target: NoteTarget
