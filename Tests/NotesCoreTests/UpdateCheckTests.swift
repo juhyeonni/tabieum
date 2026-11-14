@@ -124,3 +124,26 @@ private let downloads = "https://github.com/me/app/releases/download/v1.2.0/"
     #expect(kind("/Applications/Tabieum.app", cask: false, writable: false) == .fixed(.notWritable))
     #expect(kind("/Applications/Tabieum.app", cask: false, writable: true) == .replaceable)
 }
+
+@Test func releaseAssetAddressesMustLieInTheRepositorysOwnDownloads() throws {
+    func accepted(_ address: String) throws -> Bool {
+        UpdateCheck.isReleaseAsset(try #require(URL(string: address)), repository: "me/app")
+    }
+    #expect(try accepted("https://github.com/me/app/releases/download/v1.2.0/App-1.2.0.zip"))
+
+    let refused = [
+        "http://github.com/me/app/releases/download/v1.2.0/App-1.2.0.zip",
+        "https://github.com:8443/me/app/releases/download/v1.2.0/App-1.2.0.zip",
+        "https://someone@github.com/me/app/releases/download/v1.2.0/App-1.2.0.zip",
+        "https://api.github.com/me/app/releases/download/v1.2.0/App-1.2.0.zip",
+        "https://github.com.example.com/me/app/releases/download/v1.2.0/App-1.2.0.zip",
+        "https://github.com/me/app/releases/download/../../../other/app/releases/download/v1/App.zip",
+        "https://github.com/x/me/app/releases/download/v1.2.0/App-1.2.0.zip",
+        "https://github.com/me/app2/releases/download/v1.2.0/App-1.2.0.zip",
+        "https://github.com/me/app/releases/tag/v1.2.0",
+        "https://github.com/other/app/releases/download/v1.2.0/App-1.2.0.zip"
+    ]
+    for address in refused {
+        #expect(try !accepted(address), "\(address)")
+    }
+}
