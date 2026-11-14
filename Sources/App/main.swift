@@ -5,7 +5,8 @@ import SwiftUI
 
 @MainActor
 func makeStatusMenu(
-    name: String, version: String, embeddingItem: NSMenuItem, target: AnyObject, showSettings: Selector, checkForUpdates: Selector
+    name: String, version: String, embeddingItem: NSMenuItem, relaunchItem: NSMenuItem, target: AnyObject,
+    showSettings: Selector, checkForUpdates: Selector, relaunch: Selector
 ) -> NSMenu {
     let menu = NSMenu()
     menu.addItem(withTitle: "Settings…", action: showSettings, keyEquivalent: ",").target = target
@@ -13,6 +14,10 @@ func makeStatusMenu(
     embeddingItem.isHidden = true
     menu.addItem(embeddingItem)
     menu.addItem(.separator())
+    relaunchItem.action = relaunch
+    relaunchItem.target = target
+    relaunchItem.isHidden = true
+    menu.addItem(relaunchItem)
     menu.addItem(withTitle: "Check for Updates…", action: checkForUpdates, keyEquivalent: "").target = target
     menu.addItem(withTitle: "\(name) \(version)", action: nil, keyEquivalent: "").isEnabled = false
     menu.addItem(withTitle: "Quit \(name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -20,7 +25,7 @@ func makeStatusMenu(
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private let status = PermissionStatus()
     private let toggles = FeatureToggles()
@@ -35,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var slashCommands: SlashCommands?
     private var indexService: IndexService?
     private let embeddingItem = NSMenuItem()
+    private let relaunchItem = NSMenuItem()
     private let embedding = EmbeddingState()
     private let modelInstall = ModelInstall()
     private var backlinksPanel: BacklinksPanel?
@@ -85,8 +91,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.image = NSImage(systemSymbolName: "note.text", accessibilityDescription: name)
         item.menu = makeStatusMenu(
-            name: name, version: productVersion, embeddingItem: embeddingItem, target: self,
-            showSettings: #selector(showSettings), checkForUpdates: #selector(checkForUpdates))
+            name: name, version: productVersion, embeddingItem: embeddingItem, relaunchItem: relaunchItem, target: self,
+            showSettings: #selector(showSettings), checkForUpdates: #selector(checkForUpdates), relaunch: #selector(relaunch))
+        item.menu?.delegate = self
         statusItem = item
         ai.config = AISettings.savedConfig()
         markdownShortcuts = MarkdownShortcuts(tracker: tracker, toggles: toggles)
@@ -161,6 +168,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         writeServer?.stop()
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        let plist = Bundle.main.bundleURL.appendingPathComponent("Contents/Info.plist")
+        let onDisk = (NSDictionary(contentsOf: plist)?["CFBundleShortVersionString"]) as? String
+        let version = UpdateCheck.relaunchVersion(running: productVersion, onDisk: onDisk)
+        relaunchItem.isHidden = version == nil
+        relaunchItem.title = version.map { "Relaunch to Finish Updating (\($0))" } ?? ""
+    }
+
+    @objc private func relaunch() {
+        do {
+            try UpdateRelaunch.launch(app: Bundle.main.bundleURL)
+            NSApp.terminate(nil)
+        } catch {
+            NSLog("Could not relaunch: \(error)")
+        }
     }
 
     @objc private func showSettings() {
