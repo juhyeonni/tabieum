@@ -16,7 +16,7 @@ public struct Shortcut: Equatable, Sendable {
     public static let copyMarkdown = Shortcut(keyCode: 46, modifiers: [.control, .option, .command])
     public static let copyLink = Shortcut(keyCode: 37, modifiers: [.control, .option, .command])
     public static let dailyNote = Shortcut(keyCode: 2, modifiers: [.control, .option, .command])
-    public static let append = Shortcut(keyCode: 0, modifiers: [.control, .option, .command])
+    public static let append = Shortcut(keyCode: 34, modifiers: [.control, .option, .command])
 
     private static let keyNames: [UInt32: String] = [
         0: "A", 11: "B", 8: "C", 2: "D", 14: "E", 3: "F", 5: "G", 4: "H", 34: "I", 38: "J", 40: "K", 37: "L",

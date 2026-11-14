@@ -76,10 +76,18 @@ private final class FakeInbox: InboxWriter, @unchecked Sendable {
     defaults.removePersistentDomain(forName: name)
     let toggles = FeatureToggles(defaults: defaults)
     #expect(toggles.inboxTitle == "Inbox")
-    #expect(toggles.appendShortcut.display == "⌃⌥⌘A")
+    #expect(toggles.appendShortcut.display == "⌃⌥⌘I")
     toggles.inboxTitle = "Capture"
     toggles.appendShortcut = Shortcut(keyCode: 1, modifiers: [.command, .shift])
     let reloaded = FeatureToggles(defaults: defaults)
     #expect(reloaded.inboxTitle == "Capture")
     #expect(reloaded.appendShortcut == Shortcut(keyCode: 1, modifiers: [.command, .shift]))
+}
+
+@Test func defaultShortcutsUseDifferentKeys() {
+    let codes = [
+        Shortcut.default.keyCode, Shortcut.copyMarkdown.keyCode, Shortcut.copyLink.keyCode, Shortcut.dailyNote.keyCode,
+        Shortcut.append.keyCode, UInt32(HotKey.aiDefault.keyCode),
+    ]
+    #expect(Set(codes).count == codes.count)
 }

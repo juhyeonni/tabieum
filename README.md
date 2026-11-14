@@ -8,7 +8,7 @@ Tabieum is a separate app that works next to Notes; it is not a plug-in for it. 
 
 ## What you get
 
-- **Always on:** search by keyword with a global shortcut (default ⌃⌥⌘N), quick append to an Inbox note (⌃⌥⌘A), today's note (⌃⌥⌘D), `tabieum://` URLs, backlinks, copy as Markdown or as a deeplink, Markdown shortcuts, templates and `/` commands.
+- **Always on:** search by keyword with a global shortcut (default ⌃⌥⌘N), quick append to an Inbox note (⌃⌥⌘I), today's note (⌃⌥⌘D), `tabieum://` URLs, backlinks, copy as Markdown or as a deeplink, Markdown shortcuts, templates and `/` commands.
 - **Options you turn on:** a Vim mode, search by meaning, and AI helpers.
 - **For agents:** an MCP server, so Claude Desktop, Claude Code and other clients can search your notes, and a `search` command for scripts.
 
