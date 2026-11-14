@@ -42,52 +42,59 @@ private func body(tag: String = "v1.2.0", url: String = "https://github.com/me/a
 
 private func release(body: String? = "Notes", assets: [(String, String)]) -> Data {
     let list = assets.map { #"{"name":"\#($0.0)","browser_download_url":"\#($0.1)"}"# }.joined(separator: ",")
-    let b = body.map { #""\#($0)""# } ?? "null"
-    return Data(#"{"tag_name":"v1.2.0","html_url":"https://github.com/me/app/releases/tag/v1.2.0","body":\#(b),"assets":[\#(list)]}"#.utf8)
+    let bodyJSON = body.map { #""\#($0)""# } ?? "null"
+    let page = "https://github.com/me/app/releases/tag/v1.2.0"
+    return Data(#"{"tag_name":"v1.2.0","html_url":"\#(page)","body":\#(bodyJSON),"assets":[\#(list)]}"#.utf8)
 }
 
-private let dl = "https://github.com/me/app/releases/download/v1.2.0/"
+private let downloads = "https://github.com/me/app/releases/download/v1.2.0/"
 
 @Test func releaseReadsNotesAndMatchingAssets() {
-    let data = release(assets: [("App-1.2.0.zip", dl + "App-1.2.0.zip"), ("App-1.2.0.zip.sha256", dl + "App-1.2.0.zip.sha256")])
-    let r = UpdateCheck.latest(from: data, product: "App")
-    #expect(r?.notes == "Notes")
-    #expect(r?.zip?.absoluteString == dl + "App-1.2.0.zip")
-    #expect(r?.checksum?.absoluteString == dl + "App-1.2.0.zip.sha256")
+    let data = release(assets: [
+        ("App-1.2.0.zip", downloads + "App-1.2.0.zip"),
+        ("App-1.2.0.zip.sha256", downloads + "App-1.2.0.zip.sha256")
+    ])
+    let found = UpdateCheck.latest(from: data, product: "App")
+    #expect(found?.notes == "Notes")
+    #expect(found?.zip?.absoluteString == downloads + "App-1.2.0.zip")
+    #expect(found?.checksum?.absoluteString == downloads + "App-1.2.0.zip.sha256")
 }
 
 @Test func releaseWithoutBodyOrAssetsStillParses() {
     for data in [body(), release(body: nil, assets: [])] {
-        let r = UpdateCheck.latest(from: data, product: "App")
-        #expect(r?.version == "1.2.0")
-        #expect(r?.notes == "")
-        #expect(r?.zip == nil && r?.checksum == nil)
+        let found = UpdateCheck.latest(from: data, product: "App")
+        #expect(found?.version == "1.2.0")
+        #expect(found?.notes == "")
+        #expect(found?.zip == nil && found?.checksum == nil)
     }
 }
 
 @Test func assetsOnOtherHostsSchemesOrPathsAreAbsent() {
     let data = release(assets: [
         ("App-1.2.0.zip", "https://example.com/releases/download/App-1.2.0.zip"),
-        ("App-1.2.0.zip.sha256", "http://github.com/me/app/releases/download/v1.2.0/App-1.2.0.zip.sha256"),
+        ("App-1.2.0.zip.sha256", "http://github.com/me/app/releases/download/v1.2.0/App-1.2.0.zip.sha256")
     ])
     #expect(UpdateCheck.latest(from: data, product: "App")?.zip == nil)
     #expect(UpdateCheck.latest(from: data, product: "App")?.checksum == nil)
-    let other = release(assets: [("App-1.2.0.zip", "https://github.com/me/app/raw/main/App-1.2.0.zip"), ("App-1.2.0.zip.sha256", dl + "App-1.2.0.zip.sha256")])
-    let r = UpdateCheck.latest(from: other, product: "App")
-    #expect(r?.zip == nil)
-    #expect(r?.checksum != nil)
+    let other = release(assets: [
+        ("App-1.2.0.zip", "https://github.com/me/app/raw/main/App-1.2.0.zip"),
+        ("App-1.2.0.zip.sha256", downloads + "App-1.2.0.zip.sha256")
+    ])
+    let found = UpdateCheck.latest(from: other, product: "App")
+    #expect(found?.zip == nil)
+    #expect(found?.checksum != nil)
 }
 
 @Test func assetsWithOtherNamesAreIgnored() {
     let data = release(assets: [
-        ("App-1.1.0.zip", dl + "App-1.1.0.zip"),
-        ("App-1.2.0.zip.sha256.txt", dl + "x"),
-        ("App-1.2.0.dmg", dl + "App-1.2.0.dmg"),
-        ("App-1.2.0.zip", dl + "App-1.2.0.zip"),
+        ("App-1.1.0.zip", downloads + "App-1.1.0.zip"),
+        ("App-1.2.0.zip.sha256.txt", downloads + "x"),
+        ("App-1.2.0.dmg", downloads + "App-1.2.0.dmg"),
+        ("App-1.2.0.zip", downloads + "App-1.2.0.zip")
     ])
-    let r = UpdateCheck.latest(from: data, product: "App")
-    #expect(r?.zip?.lastPathComponent == "App-1.2.0.zip")
-    #expect(r?.checksum == nil)
+    let found = UpdateCheck.latest(from: data, product: "App")
+    #expect(found?.zip?.lastPathComponent == "App-1.2.0.zip")
+    #expect(found?.checksum == nil)
     #expect(UpdateCheck.latest(from: data)?.zip == nil)
 }
 
@@ -108,7 +115,9 @@ private let dl = "https://github.com/me/app/releases/download/v1.2.0/"
 
 @Test func installKindFollowsPrecedence() {
     func kind(_ path: String, cask: Bool, writable: Bool) -> InstallKind {
-        UpdateCheck.installKind(bundlePath: path, product: "Tabieum", hasCaskroom: { $0 == "tabieum" && cask }, isWritable: { _ in writable })
+        UpdateCheck.installKind(
+            bundlePath: path, product: "Tabieum",
+            hasCaskroom: { $0 == "tabieum" && cask }, isWritable: { _ in writable })
     }
     #expect(kind("/Applications/Tabieum.app", cask: true, writable: true) == .homebrew)
     #expect(kind("/private/var/AppTranslocation/X/d/Tabieum.app", cask: false, writable: true) == .fixed(.translocated))

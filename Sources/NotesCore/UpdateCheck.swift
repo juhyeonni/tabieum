@@ -50,9 +50,9 @@ public enum UpdateCheck {
     /// Reads the first non-empty line of a `shasum -a 256` file.
     public static func parseChecksum(_ text: String) -> (digest: String, file: String)? {
         guard let line = text.split(whereSeparator: \.isNewline).first(where: { !$0.allSatisfy(\.isWhitespace) }),
-              let m = line.wholeMatch(of: /([0-9a-fA-F]{64}) +\*?(\S.*)/)
+              let match = line.wholeMatch(of: /([0-9a-fA-F]{64}) +\*?(\S.*)/)
         else { return nil }
-        return (m.1.lowercased(), String(m.2))
+        return (match.1.lowercased(), String(match.2))
     }
 
     public static func installKind(
