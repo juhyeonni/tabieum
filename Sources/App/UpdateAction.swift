@@ -40,12 +40,17 @@ enum UpdateAction {
                 release, installed: installed, runningVersion: current, product: product, repository: repository,
                 progress: { fraction in Task { @MainActor in window.show(fraction < 1 ? .downloading : .verifying, fraction) } })
         }
-        window.onCancel = { task.cancel() }
+        var cancelRequested = false
+        window.onCancel = {
+            cancelRequested = true
+            task.cancel()
+        }
         window.show(.downloading, 0)
         do {
             let staged = try await task.value
             window.show(.replacing, 0)
-            try UpdateInstaller.install(staged, over: installed, isCancelled: { false }, beginSwap: window.lockCancel)
+            try UpdateInstaller.install(
+                staged, over: installed, isCancelled: { cancelRequested }, beginSwap: window.lockCancel)
             window.show(.relaunching, 0)
             try UpdateRelaunch.launch(app: installed)
             NSApp.terminate(nil)
