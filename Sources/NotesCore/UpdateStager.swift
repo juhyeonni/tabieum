@@ -20,6 +20,7 @@ public enum UpdateFailure: Error, Equatable {
     case wrongVersion
     case notNewer
     case signature(String)
+    case replaceFailed(String)
     case cancelled
 }
 
