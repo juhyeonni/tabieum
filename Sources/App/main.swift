@@ -135,8 +135,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func startWriteServer(bundleIdentifier: String) {
+        let index = indexService
         let service = NoteWriteService(
-            settings: { WriteSettings(defaults: .standard) }, writer: AppleScriptNotesWriter(), confirmer: AlertConfirmer(),
+            settings: { WriteSettings(defaults: .standard) },
+            writer: NotifyingNoteWriter(AppleScriptNotesWriter()) { index?.requestSync() }, confirmer: AlertConfirmer(),
             productName: ProductInfo.main?.name ?? "NoteKit")
         let server = WriteSocketServer(path: NoteWriteService.socketURL(bundleIdentifier: bundleIdentifier), service: service)
         do {

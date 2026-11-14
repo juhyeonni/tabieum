@@ -300,3 +300,34 @@ private final class SocketClient {
     #expect(try mode(url.path) == 0o600)
     #expect(try mode(directory.path) == 0o700)
 }
+
+private final class WriteCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.withLock { count } }
+    func bump() { lock.withLock { count += 1 } }
+}
+
+@Test func notifyingWriterSignalsAfterEachSuccessfulWriteOnly() async throws {
+    let base = FakeWriter()
+    let counter = WriteCounter()
+    let writer = NotifyingNoteWriter(base) { counter.bump() }
+    let target = NoteTarget(account: "iCloud", folder: "Agents")
+    let note = ResolvedNote(handle: "h", title: "t", folder: "Agents", modified: Date(timeIntervalSince1970: 1), hasAttachments: false)
+
+    _ = try await writer.folderExists(target)
+    _ = try await writer.resolveNote(identifier: "N-1", scope: .targetFolder, target: target)
+    #expect(counter.value == 0)
+
+    _ = try await writer.createNote(title: "a", html: "x", in: target)
+    #expect(counter.value == 1)
+    try await writer.replaceBody(of: note, with: "y")
+    #expect(counter.value == 2)
+    try await writer.moveToTrash(note)
+    #expect(counter.value == 3)
+
+    base.failure = .failed("no")
+    await #expect(throws: WriteFailure.self) { try await writer.createNote(title: "b", html: "z", in: target) }
+    await #expect(throws: WriteFailure.self) { try await writer.moveToTrash(note) }
+    #expect(counter.value == 3)
+}
