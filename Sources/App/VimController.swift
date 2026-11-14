@@ -71,6 +71,10 @@ final class VimController {
     private var latencies = LatencyWindow()
     var latencyText: String?
     private var copiesYanks = false
+    private var stepUndo = false
+    private var undoStack = VimUndoStack()
+    /// The text before the insert session that is going on, which `Esc` closes as one undo step.
+    private var sessionBaseline: String?
     var showsLatency = false {
         didSet { if !showsLatency { latencyText = nil } }
     }
@@ -82,6 +86,13 @@ final class VimController {
         }.store(in: &cancellables)
         toggles.$vimYankToClipboard.sink { [weak self] on in
             MainActor.assumeIsolated { self?.copiesYanks = on }
+        }.store(in: &cancellables)
+        toggles.$vimStepUndo.sink { [weak self] on in
+            MainActor.assumeIsolated {
+                self?.stepUndo = on
+                self?.undoStack.clear()
+                self?.sessionBaseline = nil
+            }
         }.store(in: &cancellables)
         toggles.$vimCursorShape.sink { [weak self] setting in
             MainActor.assumeIsolated {
@@ -201,6 +212,10 @@ final class VimController {
 
     private func run(_ command: VimCommand) async {
         guard let buffer = tracker.buffer() else { return }
+        if stepUndo, let run = command.historyRun {
+            await stepHistory(redo: run.redo, count: run.count)
+            return
+        }
         if await runGroupedHistory(command) { return }
         history.record(command, text: buffer.text)
         let actions = engine.execute(command, on: buffer)
@@ -215,6 +230,31 @@ final class VimController {
             let ok = count > 1 ? await pressHistory(redo: action == .redo, count: count) : await perform(action)
             guard ok else { return }
             i += count
+        }
+        if stepUndo { recordStep(command, before: buffer.text) }
+    }
+
+    /// Records what `command` changed as one undo step. An insert session is one step, closed by the command that leaves it.
+    private func recordStep(_ command: VimCommand, before: String) {
+        if command.startsInsert, sessionBaseline == nil { sessionBaseline = before }
+        var leaves = false
+        if case .exitInsert = command { leaves = true }
+        guard sessionBaseline == nil || leaves else { return }
+        let base = sessionBaseline ?? before
+        sessionBaseline = nil
+        guard let after = tracker.liveText, let edit = VimEdit(from: base, to: after) else { return }
+        undoStack.record(edit)
+    }
+
+    /// `u` and `Ctrl-r` through the Vim stack. What the stack cannot undo, because it is empty or the note was changed from
+    /// outside Vim, goes to Notes' own history as it does with the setting off.
+    private func stepHistory(redo: Bool, count: Int) async {
+        for done in 0..<count {
+            guard let note = tracker.liveText, let actions = redo ? undoStack.redo(on: note) : undoStack.undo(on: note) else {
+                _ = await pressHistory(redo: redo, count: count - done)
+                return
+            }
+            for action in actions { guard await perform(action) else { return } }
         }
     }
 

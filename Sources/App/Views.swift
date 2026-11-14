@@ -114,6 +114,10 @@ struct SettingsView: View {
                         .disabled(!toggles.vimEnabled)
                     Toggle("Copy yanks to the clipboard", isOn: $toggles.vimYankToClipboard)
                         .disabled(!toggles.vimEnabled)
+                    Toggle("Undo one Vim command at a time", isOn: $toggles.vimStepUndo)
+                        .disabled(!toggles.vimEnabled)
+                    Text("Notes merges a run of deletions into one undo step. With this on, u and Ctrl-r follow Vim, but restored text comes back as plain text, without bold, links or other formatting.")
+                        .font(.callout).foregroundStyle(.secondary)
                     Picker("Cursor shape", selection: $toggles.vimCursorShape) {
                         ForEach(VimCursorSetting.allCases, id: \.self) { Text($0.displayName).tag($0) }
                     }
