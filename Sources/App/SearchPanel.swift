@@ -201,9 +201,13 @@ struct SearchView: View {
             }
         }
         .background {
-            Button("") { model.startNaming() }.keyboardShortcut("s", modifiers: .command)
-            Button("") { model.deleteSaved() }.keyboardShortcut(.delete, modifiers: .command)
-                .disabled(model.saved.isEmpty)
+            Group {
+                Button("") { model.startNaming() }.keyboardShortcut("s", modifiers: .command)
+                Button("") { model.deleteSaved() }.keyboardShortcut(.delete, modifiers: .command)
+                    .disabled(model.saved.isEmpty)
+            }
+            .opacity(0)
+            .accessibilityHidden(true)
         }
         .frame(width: 640, height: 420)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
