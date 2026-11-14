@@ -55,7 +55,7 @@ final class UpdatePromptWindow {
     }
 
     func run() -> Int {
-        NSApp.activate()
+        NSApp.activate(ignoringOtherApps: true)
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.runModal(for: window)
@@ -91,10 +91,15 @@ final class UpdatePromptWindow {
         let view = NSTextView(frame: NSRect(x: 0, y: 0, width: 340, height: 160))
         view.isEditable = false
         view.drawsBackground = false
+        view.isHorizontallyResizable = false
+        view.autoresizingMask = [.width]
+        view.textContainer?.widthTracksTextView = true
         view.textStorage?.setAttributedString(text)
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 340, height: 160))
         scroll.hasVerticalScroller = true
         scroll.documentView = view
+        scroll.tile()
+        view.setFrameSize(NSSize(width: scroll.contentSize.width, height: view.frame.height))
         scroll.widthAnchor.constraint(equalToConstant: 340).isActive = true
         scroll.heightAnchor.constraint(equalToConstant: 160).isActive = true
         return scroll
