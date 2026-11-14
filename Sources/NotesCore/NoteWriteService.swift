@@ -145,23 +145,25 @@ public struct NoteWriteService: Sendable {
     }
 
     /// The reply line for one request line. Always one JSON object.
+    /// Bodies arrive as Markdown and are turned into HTML here, so no markup from the other end of the socket reaches Notes.
     public func handle(_ line: String, session: WriteSession) async -> String {
         guard let data = line.data(using: .utf8),
               let request = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let action = (request["action"] as? String).flatMap(WriteAction.init(rawValue:))
         else { return Self.reply(error: "Not a valid write request.") }
+        guard request["html"] == nil else { return Self.reply(error: "html is not accepted. Send the body as Markdown in body.") }
         switch action {
         case .create:
             let title = (request["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-            guard let html = request["html"] as? String, title != nil || !html.isEmpty else {
-                return Self.reply(error: "create needs an html body, or a title.")
+            guard let body = request["body"] as? String, title != nil || !body.allSatisfy(\.isWhitespace) else {
+                return Self.reply(error: "create needs a Markdown body, or a title.")
             }
-            return await create(title: title, html: html, session: session)
+            return await create(title: title, html: NoteHTML.html(fromMarkdown: body), session: session)
         case .edit:
-            guard let id = request["id"] as? String, !id.isEmpty, let html = request["html"] as? String,
+            guard let id = request["id"] as? String, !id.isEmpty, let body = request["body"] as? String,
                   let expected = (request["expected_modified"] as? String).flatMap({ ISO8601DateFormatter().date(from: $0) })
-            else { return Self.reply(error: "edit needs an id, an html body and an ISO 8601 expected_modified.") }
-            return await edit(id: id, html: html, expectedModified: expected, session: session)
+            else { return Self.reply(error: "edit needs an id, a Markdown body and an ISO 8601 expected_modified.") }
+            return await edit(id: id, html: NoteHTML.html(fromMarkdown: body), expectedModified: expected, session: session)
         case .delete:
             guard let id = request["id"] as? String, !id.isEmpty else { return Self.reply(error: "delete needs an id.") }
             return await delete(id: id, session: session)

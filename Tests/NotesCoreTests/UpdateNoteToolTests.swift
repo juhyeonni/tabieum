@@ -9,8 +9,8 @@ private func note(modified: Date = readAt, attachments: Bool = false) -> Resolve
     ResolvedNote(handle: "x-coredata://S/ICNote/p1", title: "Plan", folder: "Agents", modified: modified, hasAttachments: attachments)
 }
 
-private func editLine(id: String = "n1", html: String = "<div>new</div>", expected: String = stamp) -> String {
-    #"{"action":"edit","id":"\#(id)","html":"\#(html)","expected_modified":"\#(expected)"}"#
+private func editLine(id: String = "n1", body: String = "new", expected: String = stamp) -> String {
+    #"{"action":"edit","id":"\#(id)","body":"\#(body)","expected_modified":"\#(expected)"}"#
 }
 
 private func parse(_ reply: String) throws -> (ok: Bool, error: String) {

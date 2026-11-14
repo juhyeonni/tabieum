@@ -28,7 +28,7 @@ func makeStatusMenu(
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private let status = PermissionStatus()
-    private let toggles = FeatureToggles()
+    private let toggles = FeatureToggles(writeGrants: ProductInfo.main.map { KeychainWriteGrantStore(bundleIdentifier: $0.bundleIdentifier) })
     private lazy var ai = AIFeature(toggles: toggles, factory: AISettings.makeProvider)
     private var onboardingWindow: NSWindow?
     private var settingsWindow: NSWindow?
@@ -143,8 +143,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func startWriteServer(bundleIdentifier: String) {
         let index = indexService
+        let grants = KeychainWriteGrantStore(bundleIdentifier: bundleIdentifier)
         let service = NoteWriteService(
-            settings: { WriteSettings(defaults: .standard) },
+            settings: { WriteSettings.approved(defaults: .standard, grants: grants) },
             writer: NotifyingNoteWriter(AppleScriptNotesWriter()) { index?.requestSync() }, confirmer: AlertConfirmer(),
             productName: ProductInfo.main?.name ?? "NoteKit")
         let server = WriteSocketServer(path: NoteWriteService.socketURL(bundleIdentifier: bundleIdentifier), service: service)
