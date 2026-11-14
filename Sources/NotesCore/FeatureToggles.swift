@@ -4,6 +4,7 @@ import Foundation
 
 public final class FeatureToggles: ObservableObject {
     private let defaults: UserDefaults
+    private let writeGrants: WriteGrantStore?
 
     @Published public var vimEnabled: Bool { didSet { defaults.set(vimEnabled, forKey: "vimEnabled") } }
     @Published public var vimJKEnabled: Bool { didSet { defaults.set(vimJKEnabled, forKey: "vimJKEnabled") } }
@@ -21,7 +22,15 @@ public final class FeatureToggles: ObservableObject {
     @Published public var savedSearches: [SavedSearch] {
         didSet { defaults.set(try? JSONEncoder().encode(savedSearches), forKey: "savedSearches") }
     }
-    @Published public var write: WriteSettings { didSet { write.save(to: defaults) } }
+    @Published public var write: WriteSettings {
+        didSet {
+            write.save(to: defaults)
+            if write.grant != oldValue.grant { writeGrants?.save(write.grant) }
+            writeChangedOutside = false
+        }
+    }
+    /// True when the saved write settings differed from what the app had approved, so their grant fields were turned back to the defaults.
+    @Published public private(set) var writeChangedOutside = false
     @Published public var formatToolbarEnabled: Bool { didSet { defaults.set(formatToolbarEnabled, forKey: "formatToolbarEnabled") } }
     @Published public var showCaretOverlay: Bool { didSet { defaults.set(showCaretOverlay, forKey: "showCaretOverlay") } }
     @Published public var showVimLatency: Bool { didSet { defaults.set(showVimLatency, forKey: "showVimLatency") } }
@@ -94,8 +103,10 @@ public final class FeatureToggles: ObservableObject {
         defaults.set(Int(value.modifiers.rawValue), forKey: "\(name).modifiers")
     }
 
-    public init(defaults: UserDefaults = .standard) {
+    /// With `writeGrants`, write settings that widen what agents may do count only if the app saved them there too.
+    public init(defaults: UserDefaults = .standard, writeGrants: WriteGrantStore? = nil) {
         self.defaults = defaults
+        self.writeGrants = writeGrants
         templateFolder = defaults.string(forKey: "templateFolder") ?? "Templates"
         inboxTitle = defaults.string(forKey: "inboxTitle") ?? "Inbox"
         folderDescriptions = defaults.dictionary(forKey: "folderDescriptions") as? [String: String] ?? [:]
@@ -109,7 +120,10 @@ public final class FeatureToggles: ObservableObject {
         embeddingModel = EmbeddingModel(defaults: defaults)
         mcpEnabled = defaults.bool(forKey: "mcpEnabled")
         aiEnabled = defaults.bool(forKey: "aiEnabled")
-        write = WriteSettings(defaults: defaults)
+        let savedWrite = WriteSettings(defaults: defaults)
+        let approvedWrite = writeGrants.map { savedWrite.approved(by: $0.load()) } ?? savedWrite
+        write = approvedWrite
+        writeChangedOutside = approvedWrite != savedWrite
         formatToolbarEnabled = defaults.bool(forKey: "formatToolbarEnabled")
         savedSearches = defaults.data(forKey: "savedSearches").flatMap { try? JSONDecoder().decode([SavedSearch].self, from: $0) } ?? []
         showCaretOverlay = defaults.bool(forKey: "showCaretOverlay")

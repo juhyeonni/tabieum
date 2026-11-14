@@ -80,7 +80,7 @@ func service(
     NoteWriteService(settings: { value }, writer: writer, confirmer: confirmer, productName: "Tabieum", timeout: timeout)
 }
 
-let createLine = #"{"action":"create","title":"Plan","html":"<div>Ship it</div>"}"#
+let createLine = #"{"action":"create","title":"Plan","body":"Ship it"}"#
 
 private func parse(_ reply: String) throws -> (ok: Bool, error: String) {
     let object = try #require(JSONSerialization.jsonObject(with: Data(reply.utf8)) as? [String: Any])
@@ -199,9 +199,9 @@ private func freshSuite() -> UserDefaults {
     #expect(!reply.ok && reply.error.contains("Automation"))
 }
 
-@Test func aCreateWithoutATitleSendsTheBodyAsIs() async throws {
+@Test func aCreateWithoutATitleSendsTheBodyAlone() async throws {
     let writer = FakeWriter()
-    let line = #"{"action":"create","html":"<h1>Plan</h1>"}"#
+    let line = ##"{"action":"create","body":"# Plan"}"##
     let reply = try parse(await service(settings { $0.consent = .always }, writer: writer).handle(line, session: WriteSession()))
     #expect(reply.ok && writer.calls.count == 1)
     #expect(writer.calls.first?.title == nil && writer.calls.first?.html == "<h1>Plan</h1>")
@@ -209,7 +209,7 @@ private func freshSuite() -> UserDefaults {
 
 @Test func malformedRequestsGetAnErrorReply() async throws {
     let target = service(settings())
-    for line in ["not json", #"{"action":"nope"}"#, #"{"action":"create","title":""}"#, #"{"action":"create","html":""}"#,
+    for line in ["not json", #"{"action":"nope"}"#, #"{"action":"create","title":""}"#, #"{"action":"create","body":" "}"#,
                  #"{"action":"delete","id":"x"}"#] {
         #expect(try !parse(await target.handle(line, session: WriteSession())).ok)
     }

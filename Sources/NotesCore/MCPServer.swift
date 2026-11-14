@@ -217,7 +217,7 @@ public struct MCPServer: Sendable {
         guard title != nil || !body.allSatisfy(\.isWhitespace) else {
             throw ToolFailure(message: "body must not be empty when there is no title.")
         }
-        var request: [String: Any] = ["action": "create", "html": NoteHTML.html(fromMarkdown: body)]
+        var request: [String: Any] = ["action": "create", "body": body]
         request["title"] = title
         let answer = try askApp(request)
         var created = answer.filter { ["id", "title", "folder", "modified"].contains($0.key) }
@@ -233,7 +233,7 @@ public struct MCPServer: Sendable {
         guard let expected = arguments["expected_modified"] as? String, ISO8601DateFormatter().date(from: expected) != nil else {
             throw ToolFailure(message: "expected_modified must be the ISO 8601 modified value get_note returned.")
         }
-        _ = try askApp(["action": "edit", "id": id, "html": NoteHTML.html(fromMarkdown: body), "expected_modified": expected])
+        _ = try askApp(["action": "edit", "id": id, "body": body, "expected_modified": expected])
         return "Replaced the body of the note."
     }
 

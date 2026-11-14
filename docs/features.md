@@ -60,6 +60,7 @@ Off by default. Agents can only do what you allow here.
 - **Which notes:** **Edit and delete reach** decides which existing notes an agent can change: only the target folder (the default), any note, or only notes created by agents. Locked notes are never touched.
 - **Your say:** the app asks you before each write and shows a preview. Under **Consent** you can change that to once per session, always, or never. An option marks notes as created by an AI agent.
 - **How it writes:** the running app writes through Notes (Automation permission), so Tabieum must be open. Your client may also ask before it calls a tool; that is separate from Tabieum's own question.
+- **Who can ask:** the app takes write requests only from its own `Tabieum --mcp` process, checked by code signature, and only as Markdown, which it turns into note HTML itself. What the switches above allow counts only when it was set in this Settings window: the app keeps a copy in the Keychain, and settings changed some other way, such as with `defaults write`, are turned back to the defaults with a notice.
 
 ### Searching from the command line
 

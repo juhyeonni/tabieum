@@ -214,6 +214,10 @@ struct WriteSettingsCard: View {
             Toggle("Let AI agents write to Notes", isOn: $toggles.write.enabled)
             Text("Off by default. Agents write through the Notes app, never into its database, and only while this app is running.")
                 .font(.callout).foregroundStyle(.secondary)
+            if toggles.writeChangedOutside {
+                Text("These settings were changed outside this window, so they were turned back to the defaults. Set them again here.")
+                    .font(.callout).foregroundStyle(.orange)
+            }
             Group {
                 ForEach(WriteAction.allCases, id: \.self) { action in
                     Toggle("Allow \(action.rawValue)", isOn: actionBinding(action))
