@@ -74,7 +74,7 @@ For scripts, `Tabieum search <words>` prints matching notes as JSON without open
 
 ## Build from source
 
-You need macOS 15, Swift 6.2 or later, and Xcode or the Command Line Tools.
+You need macOS 15 or later, Swift 6.2 or later, and Xcode or the Command Line Tools.
 
 ```sh
 scripts/test.sh      # run the tests
