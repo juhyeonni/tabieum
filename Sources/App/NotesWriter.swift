@@ -152,6 +152,15 @@ extension AppleScriptNotesWriter: InboxWriter {
         let body = Self.quoted(NoteHTML.titleLine(title) + html)
         _ = try await Self.run("tell application \"Notes\" to make new note with properties {body:\(body)}")
     }
+
+    func showNote(titled title: String) async throws -> Bool {
+        try await MainActor.run {
+            let store = AppleScriptDailyNoteStore(templateFolder: "")
+            guard let handle = try store.existingNote(titled: title) else { return false }
+            try store.show(handle)
+            return true
+        }
+    }
 }
 
 /// Asks the owner in a modal alert. Cancelling the waiting task closes the alert.
