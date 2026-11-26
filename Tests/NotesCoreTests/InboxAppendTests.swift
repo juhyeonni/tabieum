@@ -7,10 +7,12 @@ private final class FakeInbox: InboxWriter, @unchecked Sendable {
     private var log: [String] = []
     var hasNote = false
     var failure: Error?
+    var appendFailure: Error?
 
     var calls: [String] { lock.withLock { log } }
 
     func append(html: String, toNoteTitled title: String) async throws -> Bool {
+        if let appendFailure { throw appendFailure }
         lock.withLock { log.append("append \(title) \(html)") }
         return hasNote
     }
@@ -73,6 +75,16 @@ private final class FakeInbox: InboxWriter, @unchecked Sendable {
     #expect(!(await model.open()))
     #expect(model.text == "hi")
     #expect(model.error?.contains("Automation") == true)
+}
+
+@MainActor @Test func openingStopsWhenTheAppendFails() async {
+    let writer = FakeInbox()
+    writer.appendFailure = WriteFailure.failed("busy")
+    let model = AppendModel(text: "hi", title: "Inbox", writer: writer)
+    #expect(!(await model.open()))
+    #expect(model.text == "hi")
+    #expect(model.error != nil)
+    #expect(writer.calls.isEmpty)
 }
 
 @MainActor @Test func captionNamesTheSecondPress() {

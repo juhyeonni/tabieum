@@ -5,6 +5,8 @@ import SwiftUI
 @MainActor
 final class AppendPanel {
     private let toggles: FeatureToggles
+    private var model: AppendModel?
+    private var opening = false
     lazy var panel: FloatingPanel = {
         let panel = FloatingPanel(contentRect: NSRect(x: 0, y: 0, width: 640, height: 72),
                                   styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
@@ -21,12 +23,13 @@ final class AppendPanel {
         self.toggles = toggles
     }
 
-    private var model: AppendModel?
-
     /// The append shortcut: a second press while the panel is open opens the Inbox note.
     func press() {
         guard panel.isVisible, let model else { return show() }
+        guard !opening else { return }
+        opening = true
         Task {
+            defer { opening = false }
             guard await model.open() else { return }
             close()
         }
