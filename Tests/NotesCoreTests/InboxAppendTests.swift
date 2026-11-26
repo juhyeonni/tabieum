@@ -6,6 +6,7 @@ private final class FakeInbox: InboxWriter, @unchecked Sendable {
     private let lock = NSLock()
     private var log: [String] = []
     var hasNote = false
+    var failure: Error?
 
     var calls: [String] { lock.withLock { log } }
 
@@ -16,6 +17,13 @@ private final class FakeInbox: InboxWriter, @unchecked Sendable {
 
     func createNote(titled title: String, html: String) async throws {
         lock.withLock { log.append("create \(title) \(html)") }
+        hasNote = true
+    }
+
+    func showNote(titled title: String) async throws -> Bool {
+        if let failure { throw failure }
+        lock.withLock { log.append("show \(title) \(hasNote)") }
+        return hasNote
     }
 }
 
@@ -37,6 +45,41 @@ private final class FakeInbox: InboxWriter, @unchecked Sendable {
     #expect(!(await AppendModel(text: " \t", title: "Inbox", writer: writer).submit()))
     #expect(!(await AppendModel(title: "Inbox", writer: writer).submit()))
     #expect(writer.calls.isEmpty)
+}
+
+@MainActor @Test func openingWithBlankTextOnlyShowsTheNote() async {
+    let writer = FakeInbox()
+    writer.hasNote = true
+    #expect(await AppendModel(text: " ", title: "Inbox", writer: writer).open())
+    #expect(writer.calls == ["show Inbox true"])
+}
+
+@MainActor @Test func openingAppendsTheTypedLineFirst() async {
+    let writer = FakeInbox()
+    #expect(await AppendModel(text: "hi", title: "Inbox", writer: writer).open())
+    #expect(writer.calls == ["append Inbox <div>hi</div>", "create Inbox <div>hi</div>", "show Inbox true"])
+}
+
+@MainActor @Test func openingCreatesAnEmptyNoteWhenItIsMissing() async {
+    let writer = FakeInbox()
+    #expect(await AppendModel(title: "Capture", writer: writer).open())
+    #expect(writer.calls == ["show Capture false", "create Capture ", "show Capture true"])
+}
+
+@MainActor @Test func openingFailureKeepsTheText() async {
+    let writer = FakeInbox()
+    writer.failure = WriteFailure.automationDenied
+    let model = AppendModel(text: "hi", title: "Inbox", writer: writer)
+    #expect(!(await model.open()))
+    #expect(model.text == "hi")
+    #expect(model.error?.contains("Automation") == true)
+}
+
+@MainActor @Test func captionNamesTheSecondPress() {
+    let writer = FakeInbox()
+    #expect(AppendModel(title: "Inbox", writer: writer).caption == "Adds to \"Inbox\"")
+    let model = AppendModel(title: "Inbox", openShortcut: Shortcut.append.display, writer: writer)
+    #expect(model.caption == "Adds to \"Inbox\" · ⌃⌥⌘I again to open")
 }
 
 @Test func lineHTMLIsEscaped() {

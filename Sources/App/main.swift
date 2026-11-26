@@ -62,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var actionButton: ActionButton?
     private lazy var appendPanel = AppendPanel(toggles: toggles)
     private lazy var appendShortcut = ShortcutController(
-        toggles: toggles, title: "Append to Inbox shortcut", id: 5, keyPath: \.appendShortcut) { [weak self] in self?.appendPanel.show() }
+        toggles: toggles, title: "Append to Inbox shortcut", id: 5, keyPath: \.appendShortcut) { [weak self] in self?.appendPanel.press() }
     private var cancellables: Set<AnyCancellable> = []
 
     private var productName: String { ProductInfo.main?.name ?? ProcessInfo.processInfo.processName }

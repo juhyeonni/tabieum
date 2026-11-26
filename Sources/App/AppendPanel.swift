@@ -21,8 +21,21 @@ final class AppendPanel {
         self.toggles = toggles
     }
 
+    private var model: AppendModel?
+
+    /// The append shortcut: a second press while the panel is open opens the Inbox note.
+    func press() {
+        guard panel.isVisible, let model else { return show() }
+        Task {
+            guard await model.open() else { return }
+            close()
+        }
+    }
+
     func show(text: String = "") {
-        let model = AppendModel(text: text, title: toggles.inboxTitle, writer: AppleScriptNotesWriter())
+        let model = AppendModel(text: text, title: toggles.inboxTitle, openShortcut: toggles.appendShortcut.display,
+                                writer: AppleScriptNotesWriter())
+        self.model = model
         panel.contentView = NSHostingView(rootView: AppendView(model: model, close: { [weak self] in self?.close() }))
         panel.center()
         panel.makeKeyAndOrderFront(nil)
@@ -47,7 +60,7 @@ struct AppendView: View {
                 .focused($focused)
                 .onSubmit(submit)
                 .onKeyPress(.escape) { close(); return .handled }
-            Text(model.error ?? "Adds to \"\(model.title)\"")
+            Text(model.error ?? model.caption)
                 .font(.caption).foregroundStyle(model.error == nil ? Color.secondary : Color.red)
                 .lineLimit(1)
                 .padding(.horizontal, 12).padding(.bottom, 8)
